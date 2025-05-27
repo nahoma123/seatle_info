@@ -1,0 +1,61 @@
+# File: docker-compose.dev.yml
+version: '3.8'
+
+services:
+  postgres_db:
+    image: postgis/postgis:15-3.3 # PostgreSQL with PostGIS extension
+    container_name: seattle_info_postgres_dev
+    ports:
+      - "${DB_PORT:-5432}:5432" # Use DB_PORT from .env or default to 5432
+    environment:
+      POSTGRES_USER: ${DB_USER:-your_db_user} # Use from .env or default
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-your_db_password} # Use from .env or default
+      POSTGRES_DB: ${DB_NAME:-seattle_info_db} # Use from .env or default
+    volumes:
+      - postgres_data_dev:/var/lib/postgresql/data
+    networks:
+      - seattle_info_net_dev
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-your_db_user} -d ${DB_NAME:-seattle_info_db}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Go application service (optional for now, can be run locally)
+  # If you want to run the Go app in Docker during development:
+  # app:
+  #   build:
+  #     context: .
+  #     dockerfile: Dockerfile # We'll create this next
+  #   container_name: seattle_info_app_dev
+  #   ports:
+  #     - "${SERVER_PORT:-8080}:${SERVER_PORT:-8080}"
+  #   depends_on:
+  #     postgres_db:
+  #       condition: service_healthy
+  #   environment:
+  #     GIN_MODE: ${GIN_MODE:-debug}
+  #     SERVER_PORT: ${SERVER_PORT:-8080}
+  #     DB_HOST: postgres_db # Service name for Docker internal DNS
+  #     DB_PORT: 5432 # Internal port for postgres_db
+  #     DB_USER: ${DB_USER:-your_db_user}
+  #     DB_PASSWORD: ${DB_PASSWORD:-your_db_password}
+  #     DB_NAME: ${DB_NAME:-seattle_info_db}
+  #     DB_SSL_MODE: ${DB_SSL_MODE:-disable}
+  #     DB_TIMEZONE: ${DB_TIMEZONE:-UTC}
+  #     JWT_SECRET_KEY: ${JWT_SECRET_KEY}
+  #     # ... other env vars from .env
+  #   volumes:
+  #     - .:/app # Mount current directory to /app in container for hot-reloading (if using Air or similar)
+  #   networks:
+  #     - seattle_info_net_dev
+  #   # command: ["air", "-c", ".air.toml"] # Example if using Air for hot-reloading
+
+volumes:
+  postgres_data_dev:
+    driver: local
+
+networks:
+  seattle_info_net_dev:
+    driver: bridge

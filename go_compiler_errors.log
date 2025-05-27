@@ -1,0 +1,617 @@
+./cmd/server/wire.go
+general error output (may not be compiler error):
+package command-line-arguments
+	imports seattle_info_backend/internal/app from wire.go
+	imports seattle_info_backend/internal/auth from server.go
+	imports seattle_info_backend/internal/user from handler.go
+	imports seattle_info_backend/internal/auth from service.go: import cycle not allowed
+
+./cmd/server/main.go
+error 1:
+undefined: initializeServer
+	server, cleanup, err := initializeServer(cfg)
+
+
+./internal/auth/service.go
+general error output (may not be compiler error):
+package command-line-arguments
+	imports seattle_info_backend/internal/user from service.go
+	imports seattle_info_backend/internal/auth from service.go
+	imports seattle_info_backend/internal/user from handler.go: import cycle not allowed
+
+./internal/auth/handler.go
+general error output (may not be compiler error):
+package command-line-arguments
+	imports seattle_info_backend/internal/user from handler.go
+	imports seattle_info_backend/internal/auth from service.go
+	imports seattle_info_backend/internal/user from handler.go: import cycle not allowed
+
+./internal/auth/oauth_service.go
+general error output (may not be compiler error):
+package command-line-arguments
+	imports seattle_info_backend/internal/user from oauth_service.go
+	imports seattle_info_backend/internal/auth from service.go
+	imports seattle_info_backend/internal/user from handler.go: import cycle not allowed
+
+./internal/jobs/listing_expiry.go
+general error output (may not be compiler error):
+package command-line-arguments
+	imports seattle_info_backend/internal/listing from listing_expiry.go
+	imports seattle_info_backend/internal/middleware from handler.go
+	imports seattle_info_backend/internal/auth from auth.go
+	imports seattle_info_backend/internal/user from handler.go
+	imports seattle_info_backend/internal/auth from service.go: import cycle not allowed
+package command-line-arguments
+	imports seattle_info_backend/internal/listing from listing_expiry.go
+	imports seattle_info_backend/internal/middleware from handler.go
+	imports seattle_info_backend/internal/auth from auth.go
+	imports seattle_info_backend/internal/user from handler.go
+	imports seattle_info_backend/internal/middleware from handler.go: import cycle not allowed
+
+./internal/user/service.go
+general error output (may not be compiler error):
+package command-line-arguments
+	imports seattle_info_backend/internal/auth from service.go
+	imports seattle_info_backend/internal/user from handler.go
+	imports seattle_info_backend/internal/auth from service.go: import cycle not allowed
+
+./internal/user/handler.go
+general error output (may not be compiler error):
+package command-line-arguments
+	imports seattle_info_backend/internal/middleware from handler.go
+	imports seattle_info_backend/internal/auth from auth.go
+	imports seattle_info_backend/internal/user from handler.go
+	imports seattle_info_backend/internal/auth from service.go: import cycle not allowed
+package command-line-arguments
+	imports seattle_info_backend/internal/middleware from handler.go
+	imports seattle_info_backend/internal/auth from auth.go
+	imports seattle_info_backend/internal/user from handler.go
+	imports seattle_info_backend/internal/middleware from handler.go: import cycle not allowed
+
+./internal/user/repository.go
+error 1:
+undefined: User
+	Create(ctx context.Context, user *User) error // User should be defined in user/model.go
+
+error 2:
+undefined: User
+	FindByEmail(ctx context.Context, email string) (*User, error)
+
+error 3:
+undefined: User
+	FindByID(ctx context.Context, id uuid.UUID) (*User, error)
+
+error 4:
+undefined: User
+	Update(ctx context.Context, user *User) error
+
+error 5:
+undefined: User
+	FindByProvider(ctx context.Context, authProvider string, providerID string) (*User, error)
+
+error 6:
+undefined: User
+func (r *gormRepository) Create(ctx context.Context, user *User) error { // User from user/model.go
+
+error 7:
+undefined: User
+func (r *gormRepository) FindByEmail(ctx context.Context, email string) (*User, error) { // User from user/model.go
+
+error 8:
+undefined: User
+	var userModel User // User from user/model.go
+
+error 9:
+undefined: User
+func (r *gormRepository) FindByID(ctx context.Context, id uuid.UUID) (*User, error) { // User from user/model.go
+
+error 10:
+undefined: User
+	var userModel User // User from user/model.go
+
+error 11:
+undefined: User
+func (r *gormRepository) Update(ctx context.Context, user *User) error { // User from user/model.go
+
+error 12:
+undefined: User
+func (r *gormRepository) FindByProvider(ctx context.Context, authProvider string, providerID string) (*User, error) { // User from user/model.go
+
+error 13:
+undefined: User
+	var userModel User // User from user/model.go
+
+
+./internal/category/service.go
+error 1:
+undefined: AdminCreateCategoryRequest
+	AdminCreateCategory(ctx context.Context, req AdminCreateCategoryRequest) (*Category, error)
+
+error 2:
+undefined: Category
+	AdminCreateCategory(ctx context.Context, req AdminCreateCategoryRequest) (*Category, error)
+
+error 3:
+undefined: AdminCreateSubCategoryRequest
+	AdminCreateSubCategory(ctx context.Context, categoryID uuid.UUID, req AdminCreateSubCategoryRequest) (*SubCategory, error)
+
+error 4:
+undefined: SubCategory
+	AdminCreateSubCategory(ctx context.Context, categoryID uuid.UUID, req AdminCreateSubCategoryRequest) (*SubCategory, error)
+
+error 5:
+undefined: AdminCreateCategoryRequest
+	AdminUpdateCategory(ctx context.Context, id uuid.UUID, req AdminCreateCategoryRequest) (*Category, error)
+
+error 6:
+undefined: Category
+	AdminUpdateCategory(ctx context.Context, id uuid.UUID, req AdminCreateCategoryRequest) (*Category, error)
+
+error 7:
+undefined: AdminCreateSubCategoryRequest
+	AdminUpdateSubCategory(ctx context.Context, id uuid.UUID, req AdminCreateSubCategoryRequest) (*SubCategory, error)
+
+error 8:
+undefined: SubCategory
+	AdminUpdateSubCategory(ctx context.Context, id uuid.UUID, req AdminCreateSubCategoryRequest) (*SubCategory, error)
+
+error 9:
+undefined: Category
+	GetCategoryByID(ctx context.Context, id uuid.UUID, preloadSubcategories bool) (*Category, error)
+
+error 10:
+undefined: Category
+	GetCategoryBySlug(ctx context.Context, slug string, preloadSubcategories bool) (*Category, error)
+
+error 11:
+undefined: Category
+	GetAllCategories(ctx context.Context, preloadSubcategories bool) ([]Category, error)
+
+error 12:
+undefined: SubCategory
+	GetSubCategoryByID(ctx context.Context, id uuid.UUID) (*SubCategory, error)
+
+error 13:
+undefined: Repository
+	repo   Repository
+
+error 14:
+undefined: Repository
+func NewService(repo Repository, logger *zap.Logger /*, cfg *config.Config*/) Service {
+
+error 15:
+undefined: AdminCreateCategoryRequest
+func (s *service) AdminCreateCategory(ctx context.Context, req AdminCreateCategoryRequest) (*Category, error) {
+
+error 16:
+undefined: Category
+func (s *service) AdminCreateCategory(ctx context.Context, req AdminCreateCategoryRequest) (*Category, error) {
+
+error 17:
+undefined: Category
+	category := &Category{
+
+error 18:
+undefined: AdminCreateSubCategoryRequest
+func (s *service) AdminCreateSubCategory(ctx context.Context, categoryID uuid.UUID, req AdminCreateSubCategoryRequest) (*SubCategory, error) {
+
+error 19:
+undefined: SubCategory
+func (s *service) AdminCreateSubCategory(ctx context.Context, categoryID uuid.UUID, req AdminCreateSubCategoryRequest) (*SubCategory, error) {
+
+error 20:
+undefined: SubCategory
+	subCategory := &SubCategory{
+
+error 21:
+undefined: AdminCreateCategoryRequest
+func (s *service) AdminUpdateCategory(ctx context.Context, id uuid.UUID, req AdminCreateCategoryRequest) (*Category, error) {
+
+error 22:
+undefined: Category
+func (s *service) AdminUpdateCategory(ctx context.Context, id uuid.UUID, req AdminCreateCategoryRequest) (*Category, error) {
+
+error 23:
+undefined: AdminCreateSubCategoryRequest
+func (s *service) AdminUpdateSubCategory(ctx context.Context, id uuid.UUID, req AdminCreateSubCategoryRequest) (*SubCategory, error) {
+
+error 24:
+undefined: SubCategory
+func (s *service) AdminUpdateSubCategory(ctx context.Context, id uuid.UUID, req AdminCreateSubCategoryRequest) (*SubCategory, error) {
+
+error 25:
+undefined: Category
+func (s *service) GetCategoryByID(ctx context.Context, id uuid.UUID, preloadSubcategories bool) (*Category, error) {
+
+error 26:
+undefined: Category
+func (s *service) GetCategoryBySlug(ctx context.Context, slugToFind string, preloadSubcategories bool) (*Category, error) {
+
+error 27:
+undefined: Category
+func (s *service) GetAllCategories(ctx context.Context, preloadSubcategories bool) ([]Category, error) {
+
+error 28:
+undefined: SubCategory
+func (s *service) GetSubCategoryByID(ctx context.Context, id uuid.UUID) (*SubCategory, error) {
+
+
+./internal/category/handler.go
+error 1:
+undefined: Service
+	service Service // Depends on category.Service
+
+error 2:
+undefined: Service
+func NewHandler(service Service, logger *zap.Logger) *Handler {
+
+error 3:
+undefined: CategoryResponse
+	categoryResponses := make([]CategoryResponse, len(categories))
+
+error 4:
+undefined: ToCategoryResponse
+		categoryResponses[i] = ToCategoryResponse(&cat)
+
+error 5:
+undefined: Category
+	var catModel *Category // Changed from category to catModel to avoid conflict
+
+error 6:
+undefined: ToCategoryResponse
+	common.RespondOK(c, "Category retrieved successfully.", ToCategoryResponse(catModel))
+
+error 7:
+undefined: AdminCreateCategoryRequest
+	var req AdminCreateCategoryRequest
+
+error 8:
+undefined: ToCategoryResponse
+	common.RespondCreated(c, "Category created successfully.", ToCategoryResponse(catModel))
+
+error 9:
+undefined: AdminCreateCategoryRequest
+	var req AdminCreateCategoryRequest
+
+error 10:
+undefined: ToCategoryResponse
+	common.RespondOK(c, "Category updated successfully.", ToCategoryResponse(catModel))
+
+error 11:
+undefined: AdminCreateSubCategoryRequest
+	var req AdminCreateSubCategoryRequest
+
+error 12:
+undefined: ToSubCategoryResponse
+	common.RespondCreated(c, "SubCategory created successfully.", ToSubCategoryResponse(subCatModel))
+
+error 13:
+undefined: AdminCreateSubCategoryRequest
+	var req AdminCreateSubCategoryRequest
+
+error 14:
+undefined: ToSubCategoryResponse
+	common.RespondOK(c, "SubCategory updated successfully.", ToSubCategoryResponse(subCatModel))
+
+
+./internal/category/repository.go
+error 1:
+undefined: Category
+	CreateCategory(ctx context.Context, category *Category) error
+
+error 2:
+undefined: Category
+	FindCategoryByID(ctx context.Context, id uuid.UUID, preloadSubcategories bool) (*Category, error)
+
+error 3:
+undefined: Category
+	FindCategoryBySlug(ctx context.Context, slug string, preloadSubcategories bool) (*Category, error)
+
+error 4:
+undefined: Category
+	FindAllCategories(ctx context.Context, preloadSubcategories bool) ([]Category, error)
+
+error 5:
+undefined: Category
+	UpdateCategory(ctx context.Context, category *Category) error
+
+error 6:
+undefined: SubCategory
+	CreateSubCategory(ctx context.Context, subCategory *SubCategory) error
+
+error 7:
+undefined: SubCategory
+	FindSubCategoryByID(ctx context.Context, id uuid.UUID) (*SubCategory, error)
+
+error 8:
+undefined: SubCategory
+	FindSubCategoriesByCategoryID(ctx context.Context, categoryID uuid.UUID) ([]SubCategory, error)
+
+error 9:
+undefined: SubCategory
+	UpdateSubCategory(ctx context.Context, subCategory *SubCategory) error
+
+error 10:
+undefined: Category
+func (r *gormRepository) CreateCategory(ctx context.Context, category *Category) error {
+
+error 11:
+undefined: Category
+func (r *gormRepository) FindCategoryByID(ctx context.Context, id uuid.UUID, preloadSubcategories bool) (*Category, error) {
+
+error 12:
+undefined: Category
+	var category Category
+
+error 13:
+undefined: Category
+func (r *gormRepository) FindCategoryBySlug(ctx context.Context, slug string, preloadSubcategories bool) (*Category, error) {
+
+error 14:
+undefined: Category
+	var category Category
+
+error 15:
+undefined: Category
+func (r *gormRepository) FindAllCategories(ctx context.Context, preloadSubcategories bool) ([]Category, error) {
+
+error 16:
+undefined: Category
+	var categories []Category
+
+error 17:
+undefined: Category
+func (r *gormRepository) UpdateCategory(ctx context.Context, category *Category) error {
+
+error 18:
+undefined: Category
+	result := r.db.WithContext(ctx).Select(clause.Associations).Delete(&Category{BaseModel: common.BaseModel{ID: id}})
+
+error 19:
+undefined: SubCategory
+func (r *gormRepository) CreateSubCategory(ctx context.Context, subCategory *SubCategory) error {
+
+error 20:
+undefined: SubCategory
+func (r *gormRepository) FindSubCategoryByID(ctx context.Context, id uuid.UUID) (*SubCategory, error) {
+
+error 21:
+undefined: SubCategory
+	var subCategory SubCategory
+
+error 22:
+undefined: SubCategory
+func (r *gormRepository) FindSubCategoriesByCategoryID(ctx context.Context, categoryID uuid.UUID) ([]SubCategory, error) {
+
+error 23:
+undefined: SubCategory
+	var subCategories []SubCategory
+
+error 24:
+undefined: SubCategory
+func (r *gormRepository) UpdateSubCategory(ctx context.Context, subCategory *SubCategory) error {
+
+error 25:
+undefined: SubCategory
+	result := r.db.WithContext(ctx).Delete(&SubCategory{BaseModel: common.BaseModel{ID: id}})
+
+
+./internal/middleware/error.go
+error 1:
+undefined: RequestIDContextKey
+						zap.String("request_id", c.GetString(RequestIDContextKey)), // USE EXPORTED CONSTANT
+
+
+./internal/middleware/auth.go
+general error output (may not be compiler error):
+package command-line-arguments
+	imports seattle_info_backend/internal/auth from auth.go
+	imports seattle_info_backend/internal/user from handler.go
+	imports seattle_info_backend/internal/auth from service.go: import cycle not allowed
+
+./internal/app/server.go
+general error output (may not be compiler error):
+package command-line-arguments
+	imports seattle_info_backend/internal/auth from server.go
+	imports seattle_info_backend/internal/user from handler.go
+	imports seattle_info_backend/internal/auth from service.go: import cycle not allowed
+
+./internal/common/response.go
+error 1:
+undefined: IsAPIError
+	apiErr, ok := IsAPIError(err) // This function must be defined in common/errors.go
+
+error 2:
+undefined: ErrInternalServer
+		apiErr = ErrInternalServer.WithDetails(err.Error()) // ErrInternalServer must be defined in common/errors.go
+
+error 3:
+undefined: Pagination
+	Pagination *Pagination `json:"pagination"` // Pagination must be defined in common/model.go or common/pagination.go
+
+error 4:
+undefined: Pagination
+func RespondPaginated(c *gin.Context, message string, data interface{}, pagination *Pagination) {
+
+
+./internal/listing/service.go
+general error output (may not be compiler error):
+package command-line-arguments
+	imports seattle_info_backend/internal/user from service.go
+	imports seattle_info_backend/internal/auth from service.go
+	imports seattle_info_backend/internal/user from handler.go: import cycle not allowed
+
+./internal/listing/handler.go
+general error output (may not be compiler error):
+package command-line-arguments
+	imports seattle_info_backend/internal/middleware from handler.go
+	imports seattle_info_backend/internal/auth from auth.go
+	imports seattle_info_backend/internal/user from handler.go
+	imports seattle_info_backend/internal/auth from service.go: import cycle not allowed
+package command-line-arguments
+	imports seattle_info_backend/internal/middleware from handler.go
+	imports seattle_info_backend/internal/auth from auth.go
+	imports seattle_info_backend/internal/user from handler.go
+	imports seattle_info_backend/internal/middleware from handler.go: import cycle not allowed
+
+./internal/listing/model.go
+general error output (may not be compiler error):
+package command-line-arguments
+	imports seattle_info_backend/internal/user from model.go
+	imports seattle_info_backend/internal/auth from service.go
+	imports seattle_info_backend/internal/user from handler.go: import cycle not allowed
+
+./internal/listing/repository.go
+error 1:
+undefined: Listing
+	Create(ctx context.Context, listing *Listing) error
+
+error 2:
+undefined: Listing
+	FindByID(ctx context.Context, id uuid.UUID, preloadAssociations bool) (*Listing, error)
+
+error 3:
+undefined: Listing
+	Update(ctx context.Context, listing *Listing) error
+
+error 4:
+undefined: ListingSearchQuery
+	Search(ctx context.Context, query ListingSearchQuery) ([]Listing, *common.Pagination, error)
+
+error 5:
+undefined: Listing
+	Search(ctx context.Context, query ListingSearchQuery) ([]Listing, *common.Pagination, error)
+
+error 6:
+undefined: ListingStatus
+	UpdateStatus(ctx context.Context, id uuid.UUID, status ListingStatus, adminNotes *string) error
+
+error 7:
+undefined: Listing
+	FindExpiredListings(ctx context.Context, now time.Time) ([]Listing, error)
+
+error 8:
+undefined: ListingStatus
+	CountListingsByUserIDAndStatus(ctx context.Context, userID uuid.UUID, status ListingStatus) (int64, error)
+
+error 9:
+undefined: Listing
+func (r *gormRepository) Create(ctx context.Context, listing *Listing) error {
+
+error 10:
+undefined: Listing
+func (r *gormRepository) FindByID(ctx context.Context, id uuid.UUID, preloadAssociations bool) (*Listing, error) {
+
+error 11:
+undefined: Listing
+	var listing Listing
+
+error 12:
+undefined: Listing
+func (r *gormRepository) Update(ctx context.Context, listing *Listing) error {
+
+error 13:
+undefined: ListingDetailsBabysitting
+				DoUpdates: clause.AssignmentColumns(getUpdatableColumns(ListingDetailsBabysitting{})),
+
+error 14:
+undefined: ListingDetailsBabysitting
+			tx.Where("listing_id = ?", listing.ID).Delete(&ListingDetailsBabysitting{})
+
+error 15:
+undefined: ListingDetailsHousing
+				DoUpdates: clause.AssignmentColumns(getUpdatableColumns(ListingDetailsHousing{})),
+
+error 16:
+undefined: ListingDetailsHousing
+			tx.Where("listing_id = ?", listing.ID).Delete(&ListingDetailsHousing{})
+
+error 17:
+undefined: ListingDetailsEvents
+				DoUpdates: clause.AssignmentColumns(getUpdatableColumns(ListingDetailsEvents{})),
+
+error 18:
+undefined: ListingDetailsEvents
+			tx.Where("listing_id = ?", listing.ID).Delete(&ListingDetailsEvents{})
+
+error 19:
+undefined: ListingDetailsBabysitting
+	case ListingDetailsBabysitting:
+
+error 20:
+undefined: ListingDetailsHousing
+	case ListingDetailsHousing:
+
+error 21:
+undefined: ListingDetailsEvents
+	case ListingDetailsEvents:
+
+error 22:
+undefined: Listing
+	var listing Listing
+
+error 23:
+undefined: Listing
+	result := r.db.WithContext(ctx).Select(clause.Associations).Delete(&Listing{BaseModel: common.BaseModel{ID: id}})
+
+error 24:
+undefined: ListingSearchQuery
+func (r *gormRepository) Search(ctx context.Context, queryParams ListingSearchQuery) ([]Listing, *common.Pagination, error) {
+
+error 25:
+undefined: Listing
+func (r *gormRepository) Search(ctx context.Context, queryParams ListingSearchQuery) ([]Listing, *common.Pagination, error) {
+
+error 26:
+undefined: Listing
+	var listings []Listing
+
+error 27:
+undefined: Listing
+	dbQuery := r.db.WithContext(ctx).Model(&Listing{})
+
+error 28:
+undefined: ListingStatus
+		dbQuery = dbQuery.Where("listings.status IN (?)", []ListingStatus{StatusActive, StatusPendingApproval})
+
+error 29:
+undefined: StatusActive
+		dbQuery = dbQuery.Where("listings.status IN (?)", []ListingStatus{StatusActive, StatusPendingApproval})
+
+error 30:
+undefined: StatusPendingApproval
+		dbQuery = dbQuery.Where("listings.status IN (?)", []ListingStatus{StatusActive, StatusPendingApproval})
+
+error 31:
+undefined: ListingStatus
+func (r *gormRepository) UpdateStatus(ctx context.Context, id uuid.UUID, status ListingStatus, adminNotes *string) error {
+
+error 32:
+undefined: Listing
+	result := r.db.WithContext(ctx).Model(&Listing{}).Where("id = ?", id).Updates(updates)
+
+error 33:
+undefined: Listing
+func (r *gormRepository) FindExpiredListings(ctx context.Context, now time.Time) ([]Listing, error) {
+
+error 34:
+undefined: Listing
+	var listings []Listing
+
+error 35:
+undefined: StatusExpired
+		Where("expires_at <= ? AND status != ?", now, StatusExpired).
+
+error 36:
+undefined: ListingStatus
+func (r *gormRepository) CountListingsByUserIDAndStatus(ctx context.Context, userID uuid.UUID, status ListingStatus) (int64, error) {
+
+error 37:
+undefined: Listing
+	err := r.db.WithContext(ctx).Model(&Listing{}).Where("user_id = ? AND status = ?", userID, status).Count(&count).Error
+
+error 38:
+undefined: Listing
+	err := r.db.WithContext(ctx).Model(&Listing{}).Where("user_id = ?", userID).Count(&count).Error
+
+
