@@ -1,0 +1,106 @@
+version: '3.8'
+
+networks:
+  seattle_info_net_prod:
+    driver: bridge
+
+volumes:
+  postgres_data_prod:
+    driver: local
+
+services:
+  postgres_db:
+    image: postgis/postgis:15-3.3 # Using the same PostGIS image
+    container_name: seattle_info_postgres_prod
+    ports:
+      # Optionally expose a different host port for the prod-like DB to avoid conflict with dev DB
+      # For example, map to 5433 on the host if dev uses 5432.
+      # If .env.production defines DB_PORT as 5433, this would be:
+      # - "${DB_PORT:-5433}:5432" 
+      # For now, let's assume it might be the same or the user can adjust in .env.production if needed.
+      - "${DB_PORT:-5432}:5432" 
+    environment:
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: ${DB_NAME}
+      # Add any other PG specific env vars you might need for prod, e.g. logging, performance tuning.
+    volumes:
+      - postgres_data_prod:/var/lib/postgresql/data
+    networks:
+      - seattle_info_net_prod
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: seattle_info_app_prod
+    ports:
+      - "${SERVER_PORT:-8080}:${SERVER_PORT:-8080}" # SERVER_PORT from .env.production
+    depends_on:
+      postgres_db:
+        condition: service_healthy
+    networks:
+      - seattle_info_net_prod
+    restart: unless-stopped
+    environment:
+      # Server Configuration
+      GIN_MODE: ${GIN_MODE:-release} # Should be 'release' in .env.production
+      SERVER_PORT: ${SERVER_PORT:-8080} # Internal port for the app container
+      SERVER_HOST: ${SERVER_HOST:-0.0.0.0}
+      SERVER_TIMEOUT_SECONDS: ${SERVER_TIMEOUT_SECONDS:-30}
+
+      # Database Configuration - App connects to postgres_db service on the internal network
+      DB_HOST: postgres_db # Service name for Docker internal DNS
+      DB_PORT: 5432 # Internal port for postgres_db service
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+      DB_NAME: ${DB_NAME}
+      DB_SSL_MODE: ${DB_SSL_MODE:-disable} # Adjust as per production requirements
+      DB_TIMEZONE: ${DB_TIMEZONE:-UTC}
+      DB_MAX_IDLE_CONNS: ${DB_MAX_IDLE_CONNS:-10}
+      DB_MAX_OPEN_CONNS: ${DB_MAX_OPEN_CONNS:-100}
+      DB_CONN_MAX_LIFETIME_MINUTES: ${DB_CONN_MAX_LIFETIME_MINUTES:-60}
+      # DB_SOURCE is not directly used by the app here, but by migrate tool.
+      # The app constructs its DSN from individual DB_* vars.
+
+      # JWT Configuration
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY}
+      JWT_ACCESS_TOKEN_EXPIRY_MINUTES: ${JWT_ACCESS_TOKEN_EXPIRY_MINUTES:-60}
+      JWT_REFRESH_TOKEN_EXPIRY_DAYS: ${JWT_REFRESH_TOKEN_EXPIRY_DAYS:-7}
+
+      # Logging Configuration
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      LOG_FORMAT: ${LOG_FORMAT:-json}
+
+      # Application Specific Configuration
+      DEFAULT_LISTING_LIFESPAN_DAYS: ${DEFAULT_LISTING_LIFESPAN_DAYS:-10}
+      MAX_LISTING_DISTANCE_KM: ${MAX_LISTING_DISTANCE_KM:-50}
+      FIRST_POST_APPROVAL_ACTIVE_MONTHS: ${FIRST_POST_APPROVAL_ACTIVE_MONTHS:-6}
+
+      # Cron Jobs Configuration
+      LISTING_EXPIRY_JOB_SCHEDULE: ${LISTING_EXPIRY_JOB_SCHEDULE:-@daily}
+
+      # OAuth Configuration (These will be read from .env.production)
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET}
+      GOOGLE_REDIRECT_URI: ${GOOGLE_REDIRECT_URI}
+      APPLE_TEAM_ID: ${APPLE_TEAM_ID}
+      APPLE_CLIENT_ID: ${APPLE_CLIENT_ID}
+      APPLE_KEY_ID: ${APPLE_KEY_ID}
+      APPLE_PRIVATE_KEY_PATH: ${APPLE_PRIVATE_KEY_PATH} # Ensure this path is valid if used inside container or mount the key file
+      APPLE_REDIRECT_URI: ${APPLE_REDIRECT_URI}
+      
+      OAUTH_COOKIE_DOMAIN: ${OAUTH_COOKIE_DOMAIN}
+      OAUTH_COOKIE_SECURE: ${OAUTH_COOKIE_SECURE:-true}
+      OAUTH_COOKIE_HTTP_ONLY: ${OAUTH_COOKIE_HTTP_ONLY:-true}
+      OAUTH_COOKIE_SAME_SITE: ${OAUTH_COOKIE_SAME_SITE:-Lax}
+      OAUTH_STATE_COOKIE_NAME: ${OAUTH_STATE_COOKIE_NAME:-oauth_state}
+      OAUTH_NONCE_COOKIE_NAME: ${OAUTH_NONCE_COOKIE_NAME:-oauth_nonce}
+      OAUTH_COOKIE_MAX_AGE_MINUTES: ${OAUTH_COOKIE_MAX_AGE_MINUTES:-10}
+      # Add any other environment variables the app needs from .env.production

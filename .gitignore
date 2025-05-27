@@ -1,0 +1,24 @@
+# Ignore all .env files
+.env
+.env.*
+
+# Do not ignore .env.example
+!/.env.example
+
+# Ignore OS-generated files
+.DS_Store
+Thumbs.db
+
+# Ignore Go build outputs
+*.exe
+*.test
+*.out
+
+# Ignore vendor directory if using Go modules and not committing vendor
+vendor/
+
+# Ignore IDE/editor specific files
+.idea/
+.vscode/
+*.swp
+*~
