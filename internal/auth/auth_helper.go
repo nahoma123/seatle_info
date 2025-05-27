@@ -25,15 +25,24 @@ import (
 	josejwt "gopkg.in/square/go-jose.v2/jwt"
 )
 
-const (
-	googleAuthURL     = "https://accounts.google.com/o/oauth2/auth"
-	googleTokenURL    = "https://oauth2.googleapis.com/token"
-	googleUserInfoURL = "https://www.googleapis.com/oauth2/v3/userinfo"
+var (
+	// googleAuthURL remains const as it's used by oauth2.google.Endpoint
+	googleAuthURL  = "https://accounts.google.com/o/oauth2/auth"
+	googleTokenURL = "https://oauth2.googleapis.com/token"
+	// GoogleUserInfoURL is made a variable for testing
+	GoogleUserInfoURL = "https://www.googleapis.com/oauth2/v3/userinfo"
+)
 
+const (
 	appleAuthURL  = "https://appleid.apple.com/auth/authorize"
 	appleTokenURL = "https://appleid.apple.com/auth/token"
-	appleJWKSURL  = "https://appleid.apple.com/auth/keys"
-	appleIssuer   = "https://appleid.apple.com"
+	// appleJWKSURL made a variable for testing
+	appleIssuer = "https://appleid.apple.com"
+)
+
+var (
+	// AppleJWKSURL is made a variable for testing
+	AppleJWKSURL = "https://appleid.apple.com/auth/keys"
 )
 
 // setOAuthCookie sets a secure cookie for state or nonce.
@@ -281,4 +290,12 @@ type AppleUserForm struct {
 		LastName  string `json:"lastName"`
 	} `json:"name"`
 	Email string `json:"email"`
+}
+
+// ResetAppleKeysCacheForTest clears the cached Apple public keys. For testing purposes only.
+func ResetAppleKeysCacheForTest() {
+	appleKeysCacheLock <- struct{}{}
+	defer func() { <-appleKeysCacheLock }()
+	appleKeysCache = nil
+	appleKeysCacheExpiry = time.Time{}
 }
