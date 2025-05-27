@@ -2,8 +2,8 @@
 package middleware
 
 import (
-	"seattle_info_backend/internal/auth"   // For auth.TokenService and auth.Claims
 	"seattle_info_backend/internal/common" // For common.RespondWithError and error types
+	"seattle_info_backend/internal/shared" // For shared.TokenService and shared.Claims
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -27,7 +27,7 @@ const (
 )
 
 // AuthMiddleware creates a Gin middleware for JWT authentication.
-func AuthMiddleware(tokenService auth.TokenService, logger *zap.Logger) gin.HandlerFunc {
+func AuthMiddleware(tokenService shared.TokenService, logger *zap.Logger) gin.HandlerFunc { // Changed to shared.TokenService
 	return func(c *gin.Context) {
 		authHeader := c.GetHeader(AuthorizationHeader)
 		if authHeader == "" {
@@ -96,12 +96,12 @@ func GetUserRoleFromContext(c *gin.Context) string {
 }
 
 // GetUserClaimsFromContext retrieves the full claims object from the Gin context.
-func GetUserClaimsFromContext(c *gin.Context) *auth.Claims {
+func GetUserClaimsFromContext(c *gin.Context) *shared.Claims { // Changed to *shared.Claims
 	val, exists := c.Get(UserClaimsKey)
 	if !exists {
 		return nil
 	}
-	claims, ok := val.(*auth.Claims)
+	claims, ok := val.(*shared.Claims) // Changed to *shared.Claims
 	if !ok {
 		return nil
 	}

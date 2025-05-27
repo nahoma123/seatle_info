@@ -13,7 +13,7 @@ import (
 	"seattle_info_backend/internal/common"
 	"seattle_info_backend/internal/config"
 	"seattle_info_backend/internal/shared"
-	"time"
+	// "time" // Removed unused import, will confirm after other changes
 
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
@@ -37,28 +37,28 @@ type OAuthService interface {
 	GetOAuthProfile(provider OAuthProvider, token string) (*shared.OAuthUserProfile, error)
 	GenerateOAuthToken(provider OAuthProvider) (string, error)
 	GetGoogleLoginURL(c *gin.Context) (string, error)
-	HandleGoogleCallback(c *gin.Context, code string, state string) (*shared.User, *TokenResponse, error)
+	HandleGoogleCallback(c *gin.Context, code string, state string) (*shared.User, *shared.TokenResponse, error) // Changed to shared.TokenResponse
 	GetAppleLoginURL(c *gin.Context) (string, error)
-	HandleAppleCallback(c *gin.Context, code string, idTokenStr string, state string, appleUserJSON string) (*shared.User, *TokenResponse, error)
+	HandleAppleCallback(c *gin.Context, code string, idTokenStr string, state string, appleUserJSON string) (*shared.User, *shared.TokenResponse, error) // Changed to shared.TokenResponse
 }
 
 type oauthService struct {
 	cfg               *config.Config
-	oauthUserProvider OAuthUserProvider
-	tokenService      TokenService
+	oauthUserProvider OAuthUserProvider      // This is auth.OAuthUserProvider
+	tokenService      shared.TokenService  // Changed to shared.TokenService
 	logger            *zap.Logger
 }
 
 // NewOAuthService creates a new OAuth service.
 func NewOAuthService(
 	cfg *config.Config,
-	oauthUserProvider OAuthUserProvider, // CHANGED: Inject the interface
-	tokenService TokenService,
+	oauthUserProvider OAuthUserProvider, // This is auth.OAuthUserProvider
+	tokenService shared.TokenService, // Changed to shared.TokenService
 	logger *zap.Logger,
 ) OAuthService { // Return the interface type
 	return &oauthService{
 		cfg:               cfg,
-		oauthUserProvider: oauthUserProvider, // CHANGED
+		oauthUserProvider: oauthUserProvider,
 		tokenService:      tokenService,
 		logger:            logger.Named("OAuthService"),
 	}
@@ -278,4 +278,61 @@ func (s *oauthService) HandleAppleCallback(c *gin.Context, code string, idTokenS
 
 	s.logger.Info("Apple OAuth login successful", zap.String("userID", appUser.ID.String()), zap.Stringp("email", appUser.Email))
 	return appUser, tokenResponse, nil
+}
+
+// GenerateOAuthToken is a placeholder implementation for the OAuthService interface.
+func (s *oauthService) GenerateOAuthToken(provider OAuthProvider) (string, error) {
+	s.logger.Info("GenerateOAuthToken called (placeholder)", zap.String("provider", string(provider)))
+	// In a real scenario, this would involve more complex logic to generate or retrieve
+	// a token suitable for server-to-server communication or specific OAuth flows.
+	// For now, returning a dummy token and no error.
+	return "dummy-oauth-token-for-" + string(provider), nil
+}
+
+// GetOAuthConfig is a placeholder implementation
+func (s *oauthService) GetOAuthConfig(provider OAuthProvider) (*oauth2.Config, error) {
+    // TODO: Implement actual logic for different providers
+    s.logger.Info("GetOAuthConfig called (placeholder)", zap.String("provider", string(provider)))
+    if provider == ProviderGoogle {
+        return getGoogleOAuthConfig(s.cfg), nil
+    }
+    // Add other providers like Apple if they use a standard oauth2.Config flow here
+    return nil, fmt.Errorf("OAuth provider %s configuration not implemented", provider)
+}
+
+// GetOAuthCallbackURL is a placeholder implementation
+func (s *oauthService) GetOAuthCallbackURL(provider OAuthProvider) string {
+    // TODO: Implement actual logic
+    s.logger.Info("GetOAuthCallbackURL called (placeholder)", zap.String("provider", string(provider)))
+    if provider == ProviderGoogle {
+        return s.cfg.GoogleRedirectURI
+    }
+    if provider == ProviderApple {
+        return s.cfg.AppleRedirectURI
+    }
+    return ""
+}
+
+// GetOAuthRedirectURL is a placeholder implementation
+func (s *oauthService) GetOAuthRedirectURL(provider OAuthProvider, state string) string {
+    // TODO: Implement actual logic
+    s.logger.Info("GetOAuthRedirectURL called (placeholder)", zap.String("provider", string(provider)), zap.String("state", state))
+    // Example for Google:
+    // googleCfg := getGoogleOAuthConfig(s.cfg)
+    // return googleCfg.AuthCodeURL(state, oauth2.AccessTypeOffline, oauth2.ApprovalForce)
+    return "http://localhost/dummy-redirect?state=" + state
+}
+
+// ProcessOAuthCallback is a placeholder implementation
+func (s *oauthService) ProcessOAuthCallback(provider OAuthProvider, code string, state string) (string, error) {
+    // TODO: Implement actual logic (e.g., exchange code for token)
+    s.logger.Info("ProcessOAuthCallback called (placeholder)", zap.String("provider", string(provider)))
+    return "dummy-processed-token-for-" + string(provider), nil
+}
+
+// GetOAuthProfile is a placeholder implementation
+func (s *oauthService) GetOAuthProfile(provider OAuthProvider, token string) (*shared.OAuthUserProfile, error) {
+    // TODO: Implement actual logic
+    s.logger.Info("GetOAuthProfile called (placeholder)", zap.String("provider", string(provider)))
+    return &shared.OAuthUserProfile{Provider: string(provider), ProviderID: "dummy-id"}, nil
 }

@@ -8,6 +8,7 @@ import (
 
 	"seattle_info_backend/internal/common"
 	"seattle_info_backend/internal/shared"
+	"seattle_info_backend/internal/user" // Added import for user.ToUserResponse
 
 	"github.com/gin-gonic/gin"
 	"github.com/go-playground/validator/v10"
@@ -111,7 +112,7 @@ func (h *Handler) refreshToken(c *gin.Context) {
 		return
 	}
 
-	newTokenResponse := &TokenResponse{
+	newTokenResponse := &shared.TokenResponse{ // Changed to shared.TokenResponse
 		AccessToken:  newAccessToken,
 		RefreshToken: req.RefreshToken,
 		TokenType:    "Bearer",

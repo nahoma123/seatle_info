@@ -10,10 +10,7 @@ func (u *User) GetID() uuid.UUID {
 }
 
 func (u *User) GetEmail() *string {
-	if u.Email == "" {
-		return nil
-	}
-	return &u.Email
+	return u.Email
 }
 
 func (u *User) GetRole() string {

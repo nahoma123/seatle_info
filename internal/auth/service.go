@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"seattle_info_backend/internal/config"
+	"seattle_info_backend/internal/shared" // Added missing import
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 	"go.uber.org/zap"
@@ -18,8 +19,7 @@ type JWTService struct {
 }
 
 // NewJWTService creates a new JWT service.
-// THIS MUST RETURN THE INTERFACE TYPE: shared.TokenService
-func NewJWTService(cfg *config.Config, logger *zap.Logger) shared.TokenService {
+func NewJWTService(cfg *config.Config, logger *zap.Logger) *JWTService { // Return concrete type
 	return &JWTService{cfg: cfg, logger: logger}
 }
 
@@ -99,5 +99,4 @@ func (s *JWTService) ValidateToken(tokenString string) (*shared.Claims, error) {
 
 func (s *JWTService) ParseRefreshToken(refreshTokenString string) (*shared.Claims, error) {
 	return s.ValidateToken(refreshTokenString)
-}
 }

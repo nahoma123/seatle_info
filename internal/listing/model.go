@@ -232,7 +232,8 @@ type ListingResponse struct {
 }
 
 func ToListingResponse(listing *Listing, isAuthenticated bool) ListingResponse {
-	userResp := user.ToUserResponse(&listing.User)
+	sharedUser := user.DBToShared(&listing.User) // Convert GORM user.User to shared.User
+	userResp := user.ToUserResponse(sharedUser)  // Pass shared.User to ToUserResponse
 	catResp := category.ToCategoryResponse(&listing.Category)
 	var subCatResp *category.SubCategoryResponse
 	if listing.SubCategory != nil {

@@ -13,6 +13,7 @@ import (
 	"seattle_info_backend/internal/jobs"
 	"seattle_info_backend/internal/listing"
 	"seattle_info_backend/internal/middleware"
+	"seattle_info_backend/internal/shared" // Added missing import
 	"seattle_info_backend/internal/user"
 
 	"github.com/gin-contrib/cors" // Import CORS
@@ -46,7 +47,7 @@ type Server struct {
 func NewServer(
 	cfg *config.Config,
 	logger *zap.Logger,
-	tokenService auth.TokenService, // Still needed to create authMW
+	tokenService shared.TokenService, // Changed to shared.TokenService
 	userHandler *user.Handler,
 	authHandler *auth.Handler,
 	categoryHandler *category.Handler,

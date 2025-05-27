@@ -1,6 +1,6 @@
 # File: Makefile
 
-.PHONY: all build run test coverage clean tidy help wire migrate-up migrate-down migrate-create
+.PHONY: all build run test coverage clean tidy help wire migrate-up migrate-down migrate-create docker-dev-up docker-dev-down docker-dev-logs
 
 # Variables
 APP_NAME=seattle_info_backend

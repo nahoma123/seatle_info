@@ -5,6 +5,7 @@ import (
 	"errors"
 	"seattle_info_backend/internal/common"
 	"seattle_info_backend/internal/middleware"
+	"seattle_info_backend/internal/shared" // Added import
 
 	"github.com/gin-gonic/gin"
 	"github.com/go-playground/validator/v10"
@@ -14,13 +15,13 @@ import (
 
 // Handler struct holds dependencies for user handlers.
 type Handler struct {
-	service Service // Depends on user.Service
+	service shared.Service // Changed to shared.Service
 	logger  *zap.Logger
 }
 
 // NewHandler creates a new user handler.
 // It does NOT take auth.TokenService.
-func NewHandler(service Service, logger *zap.Logger) *Handler {
+func NewHandler(service shared.Service, logger *zap.Logger) *Handler { // Changed to shared.Service
 	return &Handler{
 		service: service,
 		logger:  logger,
@@ -44,7 +45,7 @@ func (h *Handler) RegisterRoutes(router *gin.RouterGroup, authMW gin.HandlerFunc
 }
 
 func (h *Handler) register(c *gin.Context) {
-	var req CreateUserRequest
+	var req shared.CreateUserRequest // Changed to shared.CreateUserRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		h.logger.Warn("User registration: Invalid request body", zap.Error(err))
 		var ve validator.ValidationErrors

@@ -3,6 +3,7 @@ package user
 
 import (
 	"seattle_info_backend/internal/common" // For BaseModel
+	"seattle_info_backend/internal/shared" // Added import
 	"time"
 
 	"github.com/google/uuid"
@@ -37,14 +38,6 @@ func (u *User) Sanitize() {
 
 // --- DTOs (Data Transfer Objects) for API requests/responses ---
 
-// CreateUserRequest defines the structure for creating a new user.
-type CreateUserRequest struct {
-	Email     string `json:"email" binding:"required,email"`
-	Password  string `json:"password" binding:"required,min=8,max=72"` // bcrypt max is 72 bytes
-	FirstName string `json:"first_name,omitempty" binding:"omitempty,max=100"`
-	LastName  string `json:"last_name,omitempty" binding:"omitempty,max=100"`
-}
-
 // UserResponse defines the structure for user data sent in API responses.
 type UserResponse struct {
 	ID                  uuid.UUID  `json:"id"`
@@ -61,21 +54,21 @@ type UserResponse struct {
 	LastLoginAt         *time.Time `json:"last_login_at,omitempty"`
 }
 
-// ToUserResponse converts a User model to a UserResponse DTO.
-func ToUserResponse(user *User) UserResponse {
+// ToUserResponse converts a shared.User to a UserResponse DTO.
+func ToUserResponse(svUser *shared.User) UserResponse {
 	return UserResponse{
-		ID:                  user.ID,
-		Email:               user.Email,
-		FirstName:           user.FirstName,
-		LastName:            user.LastName,
-		ProfilePictureURL:   user.ProfilePictureURL,
-		AuthProvider:        user.AuthProvider,
-		IsEmailVerified:     user.IsEmailVerified,
-		Role:                user.Role,
-		IsFirstPostApproved: user.IsFirstPostApproved,
-		CreatedAt:           user.CreatedAt,
-		UpdatedAt:           user.UpdatedAt,
-		LastLoginAt:         user.LastLoginAt,
+		ID:                  svUser.ID,
+		Email:               svUser.Email,
+		FirstName:           svUser.FirstName,
+		LastName:            svUser.LastName,
+		ProfilePictureURL:   svUser.ProfilePictureURL,
+		AuthProvider:        svUser.AuthProvider,
+		IsEmailVerified:     svUser.IsEmailVerified,
+		Role:                svUser.Role,
+		IsFirstPostApproved: svUser.IsFirstPostApproved,
+		CreatedAt:           svUser.CreatedAt,
+		UpdatedAt:           svUser.UpdatedAt,
+		LastLoginAt:         svUser.LastLoginAt,
 	}
 }
 
