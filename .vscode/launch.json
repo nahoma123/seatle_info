@@ -1,0 +1,16 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Launch Server (Seattle Info)", // Descriptive name
+            "type": "go",
+            "request": "launch",
+            "mode": "auto", // "auto" is usually fine, can be "debug"
+            "program": "${workspaceFolder}/cmd/server/", // Use directory for main package
+            "cwd": "${workspaceFolder}", // Set current working directory to project root
+            "envFile": "${workspaceFolder}/.env", // Loads .env from project root
+            "args": [], // Any command-line arguments your program might take (usually none for servers)
+            "buildFlags": "" // Any specific build flags (e.g., "-tags=some_tag")
+        }
+    ]
+}

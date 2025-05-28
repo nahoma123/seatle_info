@@ -79,11 +79,6 @@ migrate-down:
 	@if [ -z "$${DB_SOURCE}" ]; then echo "Error: DB_SOURCE environment variable is not set."; exit 1; fi
 	migrate -database "$${DB_SOURCE}" -path $(MIGRATE_PATH) down 1
 
-migrate-create: NAME?=new_migration
-	@echo "Creating migration: $(NAME)..."
-	migrate create -ext sql -dir $(MIGRATE_PATH) -seq $(NAME)
-	@echo "Migration files created in $(MIGRATE_PATH)"
-
 # Docker development environment
 docker-dev-up:
 	@echo "Starting development environment with Docker Compose..."
