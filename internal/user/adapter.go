@@ -1,11 +1,8 @@
 package user
 
 import (
-	"seattle_info_backend/internal/common" // For common.BaseModel
 	"seattle_info_backend/internal/shared"
 	"time" // For time.Time
-
-	"github.com/google/uuid" // For uuid.UUID
 )
 
 // DBToShared converts a GORM user.User model to a shared.User DTO.
@@ -29,66 +26,11 @@ func DBToShared(dbUser *User) *shared.User {
 	}
 }
 
-// CreateRequestToDB converts a shared.CreateUserRequest and hashed password to a GORM user.User model.
-// It also sets default values for a new user.
-func CreateRequestToDB(req *shared.CreateUserRequest, hashedPassword string) *User {
-	currentTime := time.Now()
-	emailCopy := req.Email // req.Email is string, user.User.Email is *string
-	firstNameCopy := req.FirstName
-	lastNameCopy := req.LastName
+// CreateRequestToDB was removed as shared.CreateUserRequest is obsolete.
+// New user creation is now handled by GetOrCreateUserFromFirebaseClaims in user.Service.
 
-	return &User{
-		BaseModel: common.BaseModel{
-			ID:        uuid.New(),
-			CreatedAt: currentTime,
-			UpdatedAt: currentTime,
-		},
-		Email:               &emailCopy,
-		PasswordHash:        &hashedPassword,
-		FirstName:           &firstNameCopy,
-		LastName:            &lastNameCopy,
-		Role:                "user", // Default role
-		AuthProvider:        "email", // Default auth provider for direct registration
-		IsEmailVerified:     false, // Email not verified initially
-		IsFirstPostApproved: false, // Default value
-	}
-}
-
-// UpdateRequestFromProfileToDB updates an existing GORM user.User model from a shared.OAuthUserProfile.
-// It focuses on updating fields typically provided by OAuth.
-func UpdateRequestFromProfileToDB(profile *shared.OAuthUserProfile, dbUser *User) {
-	if dbUser == nil || profile == nil {
-		return
-	}
-
-	dbUser.AuthProvider = profile.Provider
-	// ProviderID is usually set when linking, not directly here unless it's a new user creation path.
-	// This function assumes dbUser already exists and is being updated post-OAuth identification.
-
-	if profile.Email != "" {
-		// Only update email if provided by OAuth and potentially if verified
-		// More complex logic might be needed if email changes require re-verification
-		emailCopy := profile.Email
-		dbUser.Email = &emailCopy
-	}
-	if profile.FirstName != "" {
-		firstNameCopy := profile.FirstName
-		dbUser.FirstName = &firstNameCopy
-	}
-	if profile.LastName != "" {
-		lastNameCopy := profile.LastName
-		dbUser.LastName = &lastNameCopy
-	}
-	if profile.PictureURL != "" {
-		pictureURLCopy := profile.PictureURL
-		dbUser.ProfilePictureURL = &pictureURLCopy
-	}
-	if profile.EmailVerified {
-		dbUser.IsEmailVerified = true
-	}
-	// LastLoginAt should be updated by the service layer after successful login/linking
-	dbUser.UpdatedAt = time.Now()
-}
+// UpdateRequestFromProfileToDB was removed as shared.OAuthUserProfile is obsolete.
+// User profile updates from Firebase are handled by GetOrCreateUserFromFirebaseClaims in user.Service.
 
 // UpdateRequestFromSharedToDB updates an existing GORM user.User model from a shared.User DTO.
 // This is for general profile updates by the user. Sensitive fields are not updated here.

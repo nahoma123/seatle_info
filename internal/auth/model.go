@@ -1,13 +1,6 @@
 // File: internal/auth/model.go
 package auth
 
-// LoginRequest defines the structure for login requests.
-type LoginRequest struct {
-	Email    string `json:"email" binding:"required,email"`
-	Password string `json:"password" binding:"required"`
-}
-
-// RefreshTokenRequest defines the structure for refresh token requests.
-type RefreshTokenRequest struct {
-	RefreshToken string `json:"refresh_token" binding:"required"`
-}
+// This file used to contain DTOs for login and token refresh.
+// These are no longer needed as authentication is handled by Firebase.
+// It is kept temporarily to avoid breaking imports and will be reviewed for removal later.

@@ -36,13 +36,6 @@ type Config struct {
 	LogLevel  string `mapstructure:"LOG_LEVEL"`
 	LogFormat string `mapstructure:"LOG_FORMAT"`
 
-	// Deprecated: Replaced by Firebase Auth.
-	JWTSecretKey                string        `mapstructure:"JWT_SECRET_KEY"`
-	// Deprecated: Replaced by Firebase Auth.
-	JWTAccessTokenExpiryMinutes time.Duration `mapstructure:"JWT_ACCESS_TOKEN_EXPIRY_MINUTES"`
-	// Deprecated: Replaced by Firebase Auth.
-	JWTRefreshTokenExpiryDays   time.Duration `mapstructure:"JWT_REFRESH_TOKEN_EXPIRY_DAYS"`
-
 	// Application Specific Configuration
 	DefaultListingLifespanDays    int `mapstructure:"DEFAULT_LISTING_LIFESPAN_DAYS"`
 	MaxListingDistanceKM          int `mapstructure:"MAX_LISTING_DISTANCE_KM"`
@@ -50,24 +43,6 @@ type Config struct {
 
 	// Cron Jobs
 	ListingExpiryJobSchedule string `mapstructure:"LISTING_EXPIRY_JOB_SCHEDULE"`
-
-	// Deprecated: Replaced by Firebase Auth.
-	GoogleClientID     string `mapstructure:"GOOGLE_CLIENT_ID"`
-	// Deprecated: Replaced by Firebase Auth.
-	GoogleClientSecret string `mapstructure:"GOOGLE_CLIENT_SECRET"`
-	// Deprecated: Replaced by Firebase Auth.
-	GoogleRedirectURI  string `mapstructure:"GOOGLE_REDIRECT_URI"`
-
-	// Deprecated: Replaced by Firebase Auth.
-	AppleTeamID         string `mapstructure:"APPLE_TEAM_ID"`
-	// Deprecated: Replaced by Firebase Auth.
-	AppleClientID       string `mapstructure:"APPLE_CLIENT_ID"`
-	// Deprecated: Replaced by Firebase Auth.
-	AppleKeyID          string `mapstructure:"APPLE_KEY_ID"`
-	// Deprecated: Replaced by Firebase Auth.
-	ApplePrivateKeyPath string `mapstructure:"APPLE_PRIVATE_KEY_PATH"`
-	// Deprecated: Replaced by Firebase Auth.
-	AppleRedirectURI    string `mapstructure:"APPLE_REDIRECT_URI"`
 
 	// Firebase Configuration
 	FirebaseServiceAccountKeyPath string `mapstructure:"FIREBASE_SERVICE_ACCOUNT_KEY_PATH"`
@@ -105,23 +80,10 @@ func Load() (*Config, error) {
 	v.SetDefault("LOG_LEVEL", "info")
 	v.SetDefault("LOG_FORMAT", "console")
 
-	v.SetDefault("JWT_SECRET_KEY", "default_deprecated_jwt_key")
-	v.SetDefault("JWT_ACCESS_TOKEN_EXPIRY_MINUTES", 60)
-	v.SetDefault("JWT_REFRESH_TOKEN_EXPIRY_DAYS", 7)
-
 	v.SetDefault("DEFAULT_LISTING_LIFESPAN_DAYS", 10)
 	v.SetDefault("MAX_LISTING_DISTANCE_KM", 50)
 	v.SetDefault("FIRST_POST_APPROVAL_ACTIVE_MONTHS", 6)
 	v.SetDefault("LISTING_EXPIRY_JOB_SCHEDULE", "@daily")
-
-	v.SetDefault("GOOGLE_CLIENT_ID", "deprecated_google_client_id")
-	v.SetDefault("GOOGLE_CLIENT_SECRET", "deprecated_google_client_secret")
-	v.SetDefault("GOOGLE_REDIRECT_URI", "http://localhost:8080/api/v1/auth/google/callback_deprecated")
-	v.SetDefault("APPLE_TEAM_ID", "deprecated_apple_team_id")
-	v.SetDefault("APPLE_CLIENT_ID", "deprecated_apple_client_id")
-	v.SetDefault("APPLE_KEY_ID", "deprecated_apple_key_id")
-	v.SetDefault("APPLE_PRIVATE_KEY_PATH", "/path/to/deprecated_apple_key.p8")
-	v.SetDefault("APPLE_REDIRECT_URI", "http://localhost:8080/api/v1/auth/apple/callback_deprecated")
 
 	// Firebase
 	v.SetDefault("FIREBASE_PROJECT_ID", "") // Optional
@@ -137,8 +99,6 @@ func Load() (*Config, error) {
 	// Convert duration fields
 	cfg.ServerTimeout = time.Duration(v.GetInt("SERVER_TIMEOUT_SECONDS")) * time.Second
 	cfg.DBConnMaxLifetime = time.Duration(v.GetInt("DB_CONN_MAX_LIFETIME_MINUTES")) * time.Minute
-	cfg.JWTAccessTokenExpiryMinutes = time.Duration(v.GetInt("JWT_ACCESS_TOKEN_EXPIRY_MINUTES")) * time.Minute
-	cfg.JWTRefreshTokenExpiryDays = time.Duration(v.GetInt("JWT_REFRESH_TOKEN_EXPIRY_DAYS")) * 24 * time.Hour
 
 	// Construct DBSource for GORM if not explicitly set by env var DB_SOURCE
 	// This ensures GORM DSN is available even if only individual DB params are set.
@@ -168,24 +128,6 @@ func Load() (*Config, error) {
 	if _, err := os.Stat(cfg.FirebaseServiceAccountKeyPath); os.IsNotExist(err) {
 		return nil, fmt.Errorf("FATAL: Firebase service account key file specified in FIREBASE_SERVICE_ACCOUNT_KEY_PATH (%s) not found", cfg.FirebaseServiceAccountKeyPath)
 	}
-
-	// Commented out validation for deprecated fields
-	// if cfg.JWTSecretKey == "default_deprecated_jwt_key" || strings.TrimSpace(cfg.JWTSecretKey) == "" {
-	// 	// return nil, fmt.Errorf("FATAL: JWT_SECRET_KEY is not set or is using the default insecure value. Please set a strong secret")
-	//  fmt.Println("INFO: JWT_SECRET_KEY is using deprecated default or is empty.")
-	// }
-	// if cfg.GoogleClientID == "deprecated_google_client_id" || cfg.GoogleClientSecret == "deprecated_google_client_secret" {
-	// 	// fmt.Println("WARNING: Google OAuth credentials (GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET) are not fully set or using deprecated defaults. Google Sign-In will not work.")
-	// }
-	// if cfg.AppleTeamID == "deprecated_apple_team_id" || cfg.AppleClientID == "deprecated_apple_client_id" || cfg.AppleKeyID == "deprecated_apple_key_id" || cfg.ApplePrivateKeyPath == "/path/to/deprecated_apple_key.p8" {
-	// 	// fmt.Println("WARNING: Apple Sign-In credentials are not fully set or using deprecated defaults. Sign in with Apple will not work.")
-	// }
-	// if cfg.ApplePrivateKeyPath != "/path/to/deprecated_apple_key.p8" && cfg.ApplePrivateKeyPath != "" { // only check if it's not the default deprecated path and not empty
-	// 	if _, err := os.Stat(cfg.ApplePrivateKeyPath); os.IsNotExist(err) {
-	// 		// fmt.Printf("CRITICAL WARNING: Apple private key file specified in APPLE_PRIVATE_KEY_PATH (%s) not found. Sign in with Apple will fail.\n", cfg.ApplePrivateKeyPath)
-	// 	}
-	// }
-
 
 	if cfg.DBUser == "your_db_user" || cfg.DBPassword == "your_db_password" {
 		// This is just a warning, app might still run if defaults are valid for a local setup.
