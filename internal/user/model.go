@@ -13,12 +13,13 @@ import (
 type User struct {
 	common.BaseModel            // Embeds ID, CreatedAt, UpdatedAt
 	Email               *string `gorm:"type:varchar(255);uniqueIndex"` // Pointer to allow NULL
-	PasswordHash        *string `gorm:"type:varchar(255)"`             // Pointer to allow NULL
+	PasswordHash        *string `gorm:"type:varchar(255)"`             // Deprecated: Passwords will be managed by Firebase
 	FirstName           *string `gorm:"type:varchar(100)"`
 	LastName            *string `gorm:"type:varchar(100)"`
 	ProfilePictureURL   *string `gorm:"type:text"`
 	AuthProvider        string  `gorm:"type:varchar(50);not null;default:'email'"`
-	ProviderID          *string `gorm:"type:varchar(255);index:idx_auth_provider_provider_id,unique"` // Part of composite unique index
+	ProviderID          *string `gorm:"type:varchar(255);index:idx_auth_provider_provider_id,unique"` // Deprecated: For Firebase auth, FirebaseUID is the primary identifier. This might be used for migrating old OAuth users or specific non-Firebase OAuth if ever re-added.
+	FirebaseUID         *string `gorm:"type:varchar(255);uniqueIndex;comment:Firebase User ID"`
 	IsEmailVerified     bool    `gorm:"not null;default:false"`
 	Role                string  `gorm:"type:varchar(50);not null;default:'user'"` // e.g., "user", "admin"
 	IsFirstPostApproved bool    `gorm:"not null;default:false"`

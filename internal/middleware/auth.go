@@ -2,9 +2,11 @@
 package middleware
 
 import (
-	"seattle_info_backend/internal/common" // For common.RespondWithError and error types
-	"seattle_info_backend/internal/shared" // For shared.TokenService and shared.Claims
 	"strings"
+
+	"seattle_info_backend/internal/common" // For common.RespondWithError and error types
+	"seattle_info_backend/internal/firebase"
+	"seattle_info_backend/internal/shared" // For shared.Service (user service)
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -22,18 +24,20 @@ const (
 	UserEmailKey = "userEmail"
 	// UserRoleKey is the context key for storing the authenticated user's role
 	UserRoleKey = "userRole"
-	// UserClaimsKey stores the whole claims object
-	UserClaimsKey = "userClaims"
+	// FirebaseUIDKey is the context key for storing the Firebase UID
+	FirebaseUIDKey = "firebaseUID"
+	// UserClaimsKey stores the whole claims object - Note: Re-evaluating its use for Firebase.
+	// For now, we will not set this with the full Firebase token to keep context light.
+	// UserClaimsKey = "userClaims"
 )
 
-// AuthMiddleware creates a Gin middleware for JWT authentication.
-func AuthMiddleware(tokenService shared.TokenService, logger *zap.Logger) gin.HandlerFunc { // Changed to shared.TokenService
+// AuthMiddleware creates a Gin middleware for Firebase authentication.
+func AuthMiddleware(firebaseService *firebase.FirebaseService, userService shared.Service, logger *zap.Logger) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		authHeader := c.GetHeader(AuthorizationHeader)
 		if authHeader == "" {
 			logger.Debug("Authorization header missing")
 			common.RespondWithError(c, common.ErrUnauthorized.WithDetails("Authorization header is required."))
-			// c.Abort() is handled by RespondWithError's AbortWithStatusJSON
 			return
 		}
 
@@ -45,23 +49,39 @@ func AuthMiddleware(tokenService shared.TokenService, logger *zap.Logger) gin.Ha
 		}
 
 		tokenString := parts[1]
-		claims, err := tokenService.ValidateToken(tokenString)
+		firebaseToken, err := firebaseService.VerifyIDToken(c.Request.Context(), tokenString)
 		if err != nil {
-			logger.Warn("Token validation failed", zap.Error(err))
-			common.RespondWithError(c, common.ErrUnauthorized.WithDetails(err.Error())) // Use specific error from validation
+			logger.Warn("Firebase token validation failed", zap.Error(err))
+			common.RespondWithError(c, common.ErrUnauthorized.WithDetails("Invalid or expired token: "+err.Error()))
 			return
 		}
 
-		// Set user information in context for downstream handlers
-		c.Set(UserIDKey, claims.UserID)
-		c.Set(UserEmailKey, claims.Email)
-		c.Set(UserRoleKey, claims.Role)
-		c.Set(UserClaimsKey, claims) // Store full claims if needed
+		localUser, wasCreated, err := userService.GetOrCreateUserFromFirebaseClaims(c.Request.Context(), firebaseToken)
+		if err != nil {
+			logger.Error("Failed to get or create user from Firebase claims", zap.Error(err), zap.String("firebaseUID", firebaseToken.UID))
+			common.RespondWithError(c, common.ErrInternalServer.WithDetails("Failed to process user authentication."))
+			return
+		}
 
-		logger.Debug("User authenticated successfully",
-			zap.String("userID", claims.UserID.String()),
-			zap.String("email", claims.Email),
-			zap.String("role", claims.Role),
+		if wasCreated {
+			logger.Info("New local user created from Firebase token", zap.String("userID", localUser.ID.String()), zap.String("firebaseUID", firebaseToken.UID))
+		}
+
+		// Set user information in context for downstream handlers
+		c.Set(UserIDKey, localUser.ID)
+		if localUser.Email != nil {
+			c.Set(UserEmailKey, *localUser.Email)
+		} else {
+			c.Set(UserEmailKey, "") // Handle nil email
+		}
+		c.Set(UserRoleKey, localUser.Role)
+		c.Set(FirebaseUIDKey, firebaseToken.UID)
+
+		logger.Debug("User authenticated via Firebase successfully",
+			zap.String("localUserID", localUser.ID.String()),
+			zap.String("firebaseUID", firebaseToken.UID),
+			zap.Stringp("email", localUser.Email),
+			zap.String("role", localUser.Role),
 		)
 
 		c.Next()
@@ -95,17 +115,17 @@ func GetUserRoleFromContext(c *gin.Context) string {
 	return role
 }
 
-// GetUserClaimsFromContext retrieves the full claims object from the Gin context.
-func GetUserClaimsFromContext(c *gin.Context) *shared.Claims { // Changed to *shared.Claims
-	val, exists := c.Get(UserClaimsKey)
+// GetFirebaseUIDFromContext retrieves the Firebase UID from the Gin context.
+func GetFirebaseUIDFromContext(c *gin.Context) string {
+	val, exists := c.Get(FirebaseUIDKey)
 	if !exists {
-		return nil
+		return ""
 	}
-	claims, ok := val.(*shared.Claims) // Changed to *shared.Claims
+	uid, ok := val.(string)
 	if !ok {
-		return nil
+		return ""
 	}
-	return claims
+	return uid
 }
 
 // RoleAuthMiddleware creates a middleware to check if the authenticated user has one of the required roles.

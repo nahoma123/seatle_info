@@ -10,12 +10,13 @@ import (
 	"seattle_info_backend/internal/auth"
 	"seattle_info_backend/internal/category"
 	"seattle_info_backend/internal/config"
+	"seattle_info_backend/internal/firebase" // Added
 	"seattle_info_backend/internal/jobs"
 	"seattle_info_backend/internal/listing"
 	"seattle_info_backend/internal/platform/database"
 	"seattle_info_backend/internal/platform/logger"
-	"seattle_info_backend/internal/user"
 	"seattle_info_backend/internal/shared"
+	"seattle_info_backend/internal/user"
 
 	"github.com/google/wire"
 	"go.uber.org/zap"
@@ -28,32 +29,21 @@ func initializeServer(cfg *config.Config) (*app.Server, func(), error) {
 		// Platform Layer
 		logger.New,
 		database.NewGORM,
-		// provideCleanup, // Removed to see if Wire infers it from return signature
+		// provideCleanup, // This should be fine
 
-		// Core Services providing interfaces/concrete types needed by other services
-		auth.NewJWTService,     // Now provides *auth.JWTService (concrete)
-		wire.Bind(new(shared.TokenService), new(*auth.JWTService)), // Explicitly bind interface to concrete
-		user.NewGORMRepository, // Provides user.Repository (needed by user.NewService)
+		// Firebase Service (New)
+		firebase.NewFirebaseService,
 
-		// Concrete Service Implementations
-		// user.NewService depends on user.Repository and shared.TokenService
-		user.NewService,        // Provides *user.ServiceImplementation
+		// Core User Services (Adjusted)
+		user.NewGORMRepository, // Provides user.Repository
+		user.NewService,        // Provides *user.ServiceImplementation (constructor changed)
+		wire.Bind(new(shared.Service), new(*user.ServiceImplementation)), // This binding is still key
 
-		// Interface Bindings for *user.ServiceImplementation
-		// This makes *user.ServiceImplementation fulfill shared.Service and auth.OAuthUserProvider
-		wire.Bind(new(shared.Service), new(*user.ServiceImplementation)),
-		wire.Bind(new(auth.OAuthUserProvider), new(*user.ServiceImplementation)),
-
-		// Other Services that depend on the bound interfaces or concrete types
-		// auth.NewOAuthService depends on auth.OAuthUserProvider (which is *user.ServiceImplementation)
-		auth.NewOAuthService,   // Provides auth.OAuthService
-
-		// Handlers
-		// auth.NewHandler needs shared.Service, shared.TokenService, auth.OAuthService
+		// Handlers (Adjusted)
+		// auth.NewHandler needs shared.Service (constructor changed)
 		auth.NewHandler,
-		// user.NewHandler needs shared.Service
-		user.NewHandler,
-		
+		user.NewHandler, // Needs shared.Service
+
 		// Other Modules
 		category.NewGORMRepository,
 		category.NewService,

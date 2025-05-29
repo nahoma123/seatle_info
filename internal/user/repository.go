@@ -20,6 +20,7 @@ type Repository interface {
 	FindByID(ctx context.Context, id uuid.UUID) (*User, error)
 	Update(ctx context.Context, user *User) error
 	FindByProvider(ctx context.Context, authProvider string, providerID string) (*User, error)
+	FindByFirebaseUID(ctx context.Context, firebaseUID string) (*User, error)
 }
 
 type gormRepository struct {
@@ -63,6 +64,19 @@ func (r *gormRepository) FindByEmail(ctx context.Context, email string) (*User, 
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, common.ErrNotFound.WithDetails("User not found with this email.")
+		}
+		return nil, err
+	}
+	return &userModel, nil
+}
+
+// FindByFirebaseUID retrieves a user by their Firebase UID.
+func (r *gormRepository) FindByFirebaseUID(ctx context.Context, firebaseUID string) (*User, error) {
+	var userModel User
+	err := r.db.WithContext(ctx).Where("firebase_uid = ?", firebaseUID).First(&userModel).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, common.ErrNotFound.WithDetails("User not found with this Firebase UID.")
 		}
 		return nil, err
 	}

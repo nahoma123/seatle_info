@@ -32,11 +32,6 @@ type Config struct {
 	DBConnMaxLifetime time.Duration `mapstructure:"DB_CONN_MAX_LIFETIME_MINUTES"`
 	DBSource          string        `mapstructure:"DB_SOURCE"`
 
-	// JWT Configuration
-	JWTSecretKey                string        `mapstructure:"JWT_SECRET_KEY"`
-	JWTAccessTokenExpiryMinutes time.Duration `mapstructure:"JWT_ACCESS_TOKEN_EXPIRY_MINUTES"`
-	JWTRefreshTokenExpiryDays   time.Duration `mapstructure:"JWT_REFRESH_TOKEN_EXPIRY_DAYS"`
-
 	// Logging Configuration
 	LogLevel  string `mapstructure:"LOG_LEVEL"`
 	LogFormat string `mapstructure:"LOG_FORMAT"`
@@ -49,26 +44,9 @@ type Config struct {
 	// Cron Jobs
 	ListingExpiryJobSchedule string `mapstructure:"LISTING_EXPIRY_JOB_SCHEDULE"`
 
-	// OAuth - Google
-	GoogleClientID     string `mapstructure:"GOOGLE_CLIENT_ID"`
-	GoogleClientSecret string `mapstructure:"GOOGLE_CLIENT_SECRET"`
-	GoogleRedirectURI  string `mapstructure:"GOOGLE_REDIRECT_URI"`
-
-	// OAuth - Apple
-	AppleTeamID         string `mapstructure:"APPLE_TEAM_ID"`
-	AppleClientID       string `mapstructure:"APPLE_CLIENT_ID"`
-	AppleKeyID          string `mapstructure:"APPLE_KEY_ID"`
-	ApplePrivateKeyPath string `mapstructure:"APPLE_PRIVATE_KEY_PATH"`
-	AppleRedirectURI    string `mapstructure:"APPLE_REDIRECT_URI"`
-
-	// OAuth Cookie settings
-	OAuthCookieDomain        string `mapstructure:"OAUTH_COOKIE_DOMAIN"`
-	OAuthCookieSecure        bool   `mapstructure:"OAUTH_COOKIE_SECURE"`
-	OAuthCookieHTTPOnly      bool   `mapstructure:"OAUTH_COOKIE_HTTP_ONLY"`
-	OAuthCookieSameSite      string `mapstructure:"OAUTH_COOKIE_SAME_SITE"`
-	OAuthStateCookieName     string `mapstructure:"OAUTH_STATE_COOKIE_NAME"`
-	OAuthNonceCookieName     string `mapstructure:"OAUTH_NONCE_COOKIE_NAME"`
-	OAuthCookieMaxAgeMinutes int    `mapstructure:"OAUTH_COOKIE_MAX_AGE_MINUTES"`
+	// Firebase Configuration
+	FirebaseServiceAccountKeyPath string `mapstructure:"FIREBASE_SERVICE_ACCOUNT_KEY_PATH"`
+	FirebaseProjectID             string `mapstructure:"FIREBASE_PROJECT_ID"`
 }
 
 // Load attempts to load configuration from a .env file (if present) and environment variables.
@@ -99,10 +77,6 @@ func Load() (*Config, error) {
 	v.SetDefault("DB_CONN_MAX_LIFETIME_MINUTES", 60)
 	v.SetDefault("DB_SOURCE", "postgresql://postgres:password@localhost:5432/seattle_info_db?sslmode=disable")
 
-	v.SetDefault("JWT_SECRET_KEY", "default_secret_key_please_change")
-	v.SetDefault("JWT_ACCESS_TOKEN_EXPIRY_MINUTES", 60)
-	v.SetDefault("JWT_REFRESH_TOKEN_EXPIRY_DAYS", 7)
-
 	v.SetDefault("LOG_LEVEL", "info")
 	v.SetDefault("LOG_FORMAT", "console")
 
@@ -111,16 +85,8 @@ func Load() (*Config, error) {
 	v.SetDefault("FIRST_POST_APPROVAL_ACTIVE_MONTHS", 6)
 	v.SetDefault("LISTING_EXPIRY_JOB_SCHEDULE", "@daily")
 
-	v.SetDefault("GOOGLE_REDIRECT_URI", "http://localhost:8080/api/v1/auth/google/callback")
-	v.SetDefault("APPLE_REDIRECT_URI", "http://localhost:8080/api/v1/auth/apple/callback")
-
-	v.SetDefault("OAUTH_COOKIE_DOMAIN", "localhost")
-	v.SetDefault("OAUTH_COOKIE_SECURE", false)
-	v.SetDefault("OAUTH_COOKIE_HTTP_ONLY", true)
-	v.SetDefault("OAUTH_COOKIE_SAME_SITE", "Lax")
-	v.SetDefault("OAUTH_STATE_COOKIE_NAME", "oauth_state")
-	v.SetDefault("OAUTH_NONCE_COOKIE_NAME", "oauth_nonce")
-	v.SetDefault("OAUTH_COOKIE_MAX_AGE_MINUTES", 10)
+	// Firebase
+	v.SetDefault("FIREBASE_PROJECT_ID", "") // Optional
 
 	v.AutomaticEnv()
 	// Optional: v.SetConfigName("config"); v.AddConfigPath("."); v.ReadInConfig()
@@ -133,8 +99,6 @@ func Load() (*Config, error) {
 	// Convert duration fields
 	cfg.ServerTimeout = time.Duration(v.GetInt("SERVER_TIMEOUT_SECONDS")) * time.Second
 	cfg.DBConnMaxLifetime = time.Duration(v.GetInt("DB_CONN_MAX_LIFETIME_MINUTES")) * time.Minute
-	cfg.JWTAccessTokenExpiryMinutes = time.Duration(v.GetInt("JWT_ACCESS_TOKEN_EXPIRY_MINUTES")) * time.Minute
-	cfg.JWTRefreshTokenExpiryDays = time.Duration(v.GetInt("JWT_REFRESH_TOKEN_EXPIRY_DAYS")) * 24 * time.Hour
 
 	// Construct DBSource for GORM if not explicitly set by env var DB_SOURCE
 	// This ensures GORM DSN is available even if only individual DB params are set.
@@ -158,27 +122,16 @@ func Load() (*Config, error) {
 	}
 
 	// Basic validation for critical configs
-	if cfg.JWTSecretKey == "default_secret_key_please_change" || strings.TrimSpace(cfg.JWTSecretKey) == "" {
-		return nil, fmt.Errorf("FATAL: JWT_SECRET_KEY is not set or is using the default insecure value. Please set a strong secret")
+	if strings.TrimSpace(cfg.FirebaseServiceAccountKeyPath) == "" {
+		return nil, fmt.Errorf("FATAL: FIREBASE_SERVICE_ACCOUNT_KEY_PATH is not set. This is required for Firebase Admin SDK initialization")
 	}
+	if _, err := os.Stat(cfg.FirebaseServiceAccountKeyPath); os.IsNotExist(err) {
+		return nil, fmt.Errorf("FATAL: Firebase service account key file specified in FIREBASE_SERVICE_ACCOUNT_KEY_PATH (%s) not found", cfg.FirebaseServiceAccountKeyPath)
+	}
+
 	if cfg.DBUser == "your_db_user" || cfg.DBPassword == "your_db_password" {
 		// This is just a warning, app might still run if defaults are valid for a local setup.
 		fmt.Println("WARNING: Database credentials might be using default example values. Please update them in your .env file if this is not intended.")
-	}
-
-	if cfg.GoogleClientID == "" || cfg.GoogleClientSecret == "" {
-		fmt.Println("WARNING: Google OAuth credentials (GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET) are not fully set. Google Sign-In will not work.")
-	}
-	if cfg.AppleTeamID == "" || cfg.AppleClientID == "" || cfg.AppleKeyID == "" || cfg.ApplePrivateKeyPath == "" {
-		fmt.Println("WARNING: Apple Sign-In credentials (APPLE_TEAM_ID, APPLE_CLIENT_ID, APPLE_KEY_ID, APPLE_PRIVATE_KEY_PATH) are not fully set. Sign in with Apple will not work.")
-	}
-	if cfg.ApplePrivateKeyPath != "" {
-		if _, err := os.Stat(cfg.ApplePrivateKeyPath); os.IsNotExist(err) {
-			// This is a critical failure if Apple Sign In is intended.
-			// Could return an error, or just log a strong warning.
-			// For now, strong warning, service will fail later.
-			fmt.Printf("CRITICAL WARNING: Apple private key file specified in APPLE_PRIVATE_KEY_PATH (%s) not found. Sign in with Apple will fail.\n", cfg.ApplePrivateKeyPath)
-		}
 	}
 
 	return &cfg, nil

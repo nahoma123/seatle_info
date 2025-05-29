@@ -14,6 +14,7 @@ import (
 	"seattle_info_backend/internal/auth"
 	"seattle_info_backend/internal/category"
 	"seattle_info_backend/internal/config"
+	"seattle_info_backend/internal/firebase"
 	"seattle_info_backend/internal/jobs"
 	"seattle_info_backend/internal/listing"
 	"seattle_info_backend/internal/platform/database"
@@ -29,16 +30,14 @@ func initializeServer(cfg *config.Config) (*app.Server, func(), error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	jwtService := auth.NewJWTService(cfg, zapLogger)
 	db, err := database.NewGORM(cfg)
 	if err != nil {
 		return nil, nil, err
 	}
 	repository := user.NewGORMRepository(db)
-	serviceImplementation := user.NewService(repository, jwtService, cfg, zapLogger)
+	serviceImplementation := user.NewService(repository, cfg, zapLogger)
 	handler := user.NewHandler(serviceImplementation, zapLogger)
-	oAuthService := auth.NewOAuthService(cfg, serviceImplementation, jwtService, zapLogger)
-	authHandler := auth.NewHandler(serviceImplementation, jwtService, oAuthService, zapLogger)
+	authHandler := auth.NewHandler(serviceImplementation, zapLogger)
 	categoryRepository := category.NewGORMRepository(db)
 	service := category.NewService(categoryRepository, zapLogger, cfg)
 	categoryHandler := category.NewHandler(service, zapLogger)
@@ -46,7 +45,11 @@ func initializeServer(cfg *config.Config) (*app.Server, func(), error) {
 	listingService := listing.NewService(listingRepository, repository, service, cfg, zapLogger)
 	listingHandler := listing.NewHandler(listingService, zapLogger)
 	listingExpiryJob := jobs.NewListingExpiryJob(listingService, zapLogger, cfg)
-	server, err := app.NewServer(cfg, zapLogger, jwtService, handler, authHandler, categoryHandler, listingHandler, listingExpiryJob)
+	firebaseService, err := firebase.NewFirebaseService(cfg, zapLogger)
+	if err != nil {
+		return nil, nil, err
+	}
+	server, err := app.NewServer(cfg, zapLogger, handler, authHandler, categoryHandler, listingHandler, listingExpiryJob, db, firebaseService, serviceImplementation)
 	if err != nil {
 		return nil, nil, err
 	}

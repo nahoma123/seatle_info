@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	firebaseauth "firebase.google.com/go/v4/auth"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 )
@@ -42,11 +43,10 @@ type TokenResponse struct {
 
 // Service defines the interface for user-related business logic.
 type Service interface {
-	Register(ctx context.Context, req CreateUserRequest) (*User, *TokenResponse, error)
-	Login(ctx context.Context, email, password string) (*User, *TokenResponse, error)
 	GetUserByID(ctx context.Context, id uuid.UUID) (*User, error)
 	GetUserByEmail(ctx context.Context, email string) (*User, error)
-	FindOrCreateOrLinkOAuthUser(ctx context.Context, profile OAuthUserProfile) (usr *User, wasCreated bool, err error)
+	GetOrCreateUserFromFirebaseClaims(ctx context.Context, firebaseToken *firebaseauth.Token) (usr *User, wasCreated bool, err error)
+	GetUserByFirebaseUID(ctx context.Context, firebaseUID string) (*User, error)
 }
 
 // OAuthUserProfile holds common profile data from OAuth providers.
@@ -85,6 +85,6 @@ type Claims struct {
 
 // OAuthUserProvider defines the user operations needed by the OAuthService.
 type OAuthUserProvider interface {
-	FindOrCreateOrLinkOAuthUser(ctx context.Context, profile OAuthUserProfile) (usr *User, wasCreated bool, err error)
+	// FindOrCreateOrLinkOAuthUser(ctx context.Context, profile OAuthUserProfile) (usr *User, wasCreated bool, err error) // Removed as per instructions
 	GetUserByID(ctx context.Context, id uuid.UUID) (*User, error)
 }
