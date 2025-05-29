@@ -91,42 +91,13 @@ func NewServer(
 
 	// Register auth routes (e.g., /auth/me)
 	// These routes will be under /api/v1/auth and will use the authMW
-	authRouterGroup := v1.Group("/auth", authMW)
+	authRouterGroup := v1.Group("/auth", authMW) // Auth routes are simple, keep specific group
 	authHandler.RegisterRoutes(authRouterGroup)
 
-	// Register user routes (e.g., /users/me, /users/{id})
-	// Some routes inside userHandler might be public, some private.
-	// userHandler.RegisterRoutes should handle applying authMW selectively or expect a pre-configured group.
-	// For now, assuming userHandler.RegisterRoutes is adapted to take a group that already has authMW for its private routes.
-	// And any public routes it has are registered on a different group or handled internally.
-	// Let's pass the v1 group and authMW, allowing RegisterRoutes to decide.
-	// This means userHandler.RegisterRoutes signature in internal/user/handler.go might need to be
-	// func (h *Handler) RegisterRoutes(router *gin.RouterGroup, authMiddleware gin.HandlerFunc)
-	// Or, more simply, pass the authenticated group:
-	userRouterGroup := v1.Group("/users") // Base for all /users
-	userHandler.RegisterRoutes(userRouterGroup, authMW) // Pass authMW for userHandler to apply to its private routes
-
-	// Public GET routes for categories and listings
-	// Assuming RegisterPublicRoutes exist and take *gin.RouterGroup
-	publicCategoriesGroup := v1.Group("/categories")
-	categoryHandler.RegisterPublicRoutes(publicCategoriesGroup)
-
-	publicListingsGroup := v1.Group("/listings")
-	listingHandler.RegisterPublicRoutes(publicListingsGroup)
-
-	// Authenticated and Admin specific routes for categories and listings
-	// These groups already have authMW and then adminRoleMW applied
-	adminCategoriesGroup := v1.Group("/categories", authMW, adminRoleMW)
-	categoryHandler.RegisterAdminRoutes(adminCategoriesGroup)
-
-	adminListingsGroup := v1.Group("/listings", authMW, adminRoleMW)
-	listingHandler.RegisterAdminRoutes(adminListingsGroup)
-
-	// Authenticated (non-admin) routes for listings (e.g., creating one's own listing)
-	// This group has authMW applied
-	authenticatedListingsGroup := v1.Group("/listings", authMW)
-	listingHandler.RegisterAuthenticatedRoutes(authenticatedListingsGroup)
-
+	// Register routes for other modules by passing the base v1 group and middlewares
+	userHandler.RegisterRoutes(v1, authMW)
+	categoryHandler.RegisterRoutes(v1, authMW, adminRoleMW)
+	listingHandler.RegisterRoutes(v1, authMW, adminRoleMW)
 
 	addr := fmt.Sprintf("%s:%s", cfg.ServerHost, cfg.ServerPort)
 	httpServer := &http.Server{

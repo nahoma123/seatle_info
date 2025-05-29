@@ -3,7 +3,6 @@ package user
 import (
 	"context"
 	"errors"
-	"fmt"
 	"strings"
 	"time"
 
@@ -185,7 +184,7 @@ func (s *ServiceImplementation) GetOrCreateUserFromFirebaseClaims(ctx context.Co
 		if errCreate := s.repo.Create(ctx, dbNewUser); errCreate != nil {
 			s.logger.Error("Failed to create new user from Firebase claims", zap.Error(errCreate), zap.String("firebaseUID", firebaseToken.UID))
 			// Handle potential conflict if by some race condition or data inconsistency, email already exists
-			if apiErr, ok := common.IsAPIError(errCreate); ok && apiErr.Type == common.ErrConflict.Type {
+			if apiErr, ok := common.IsAPIError(errCreate); ok && errors.Is(apiErr, common.ErrConflict) {
 				return nil, false, apiErr
 			}
 			return nil, false, common.ErrInternalServer.WithDetails("Could not create new user account from Firebase.")
