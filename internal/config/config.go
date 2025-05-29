@@ -87,6 +87,7 @@ func Load() (*Config, error) {
 
 	// Firebase
 	v.SetDefault("FIREBASE_PROJECT_ID", "") // Optional
+	v.SetDefault("FIREBASE_SERVICE_ACCOUNT_KEY_PATH", "")
 
 	v.AutomaticEnv()
 	// Optional: v.SetConfigName("config"); v.AddConfigPath("."); v.ReadInConfig()
@@ -127,11 +128,6 @@ func Load() (*Config, error) {
 	}
 	if _, err := os.Stat(cfg.FirebaseServiceAccountKeyPath); os.IsNotExist(err) {
 		return nil, fmt.Errorf("FATAL: Firebase service account key file specified in FIREBASE_SERVICE_ACCOUNT_KEY_PATH (%s) not found", cfg.FirebaseServiceAccountKeyPath)
-	}
-
-	if cfg.DBUser == "your_db_user" || cfg.DBPassword == "your_db_password" {
-		// This is just a warning, app might still run if defaults are valid for a local setup.
-		fmt.Println("WARNING: Database credentials might be using default example values. Please update them in your .env file if this is not intended.")
 	}
 
 	return &cfg, nil

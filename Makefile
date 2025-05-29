@@ -6,7 +6,7 @@
 APP_NAME=seattle_info_backend
 CMD_DIR=./cmd/server
 BUILD_DIR=./build
-DOCKER_COMPOSE_DEV=docker-compose -f docker-compose.dev.yml
+DOCKER_COMPOSE_DEV=docker compose -f docker-compose.dev.yml
 MIGRATE_PATH=./migrations
 MIGRATE_DSN_ENV_VAR=DB_SOURCE # Assumes DB_SOURCE is set in your .env for migrate tool
 
