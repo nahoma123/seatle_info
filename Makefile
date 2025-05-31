@@ -71,8 +71,8 @@ wire:
 
 migrate-up:
     @echo "Applying migrations..."
-    docker compose -f docker-compose.dev.yml run --rm -e DB_SOURCE migrate migrate -path /migrations up
-
+	docker compose -f docker-compose.dev.yml run --rm migrate 'migrate -path /migrations -database "$DB_SOURCE" up'
+	
 migrate-down:
 	@echo "Reverting last migration..."
 	@if [ -z "$$DB_SOURCE" ]; then echo "Error: DB_SOURCE environment variable is not set."; exit 1; fi

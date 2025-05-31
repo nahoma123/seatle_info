@@ -46,10 +46,10 @@ services:
     networks:
       - seattle_info_net_dev
     entrypoint: ["/bin/sh", "-c"]
-    # Command will be overridden by Makefile
-    command: ["echo", "Ready for migration commands"]
+    command: ["echo", "Ready for migration commands"] # This will be overridden
     depends_on:
-      - postgres_db
+      postgres_db: # Corrected way to specify service dependency
+        condition: service_healthy # Wait for healthcheck to pass
     environment:
       - DB_SOURCE=${DB_SOURCE}
 
