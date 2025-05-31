@@ -22,6 +22,37 @@ services:
       timeout: 5s
       retries: 5
 
+  pgadmin:
+    image: dpage/pgadmin4:8.6
+    container_name: seattle_info_pgadmin_dev
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL:-admin@admin.com}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD:-admin}
+    ports:
+      - "5050:80" # Access pgAdmin at http://localhost:5050
+    depends_on:
+      - postgres_db
+    networks:
+      - seattle_info_net_dev
+    restart: unless-stopped
+    volumes:
+      - pgadmin_data_dev:/var/lib/pgadmin
+
+  migrate:
+    image: migrate/migrate:v4.16.2
+    container_name: seattle_info_migrate_dev
+    volumes:
+      - ./migrations:/migrations
+    networks:
+      - seattle_info_net_dev
+    entrypoint: ["/bin/sh", "-c"]
+    # Command will be overridden by Makefile
+    command: ["echo", "Ready for migration commands"]
+    depends_on:
+      - postgres_db
+    environment:
+      - DB_SOURCE=${DB_SOURCE}
+
   # Go application service (optional for now, can be run locally)
   # If you want to run the Go app in Docker during development:
   # app:
@@ -54,6 +85,8 @@ services:
 
 volumes:
   postgres_data_dev:
+    driver: local
+  pgadmin_data_dev:
     driver: local
 
 networks:

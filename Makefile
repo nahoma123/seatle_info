@@ -70,14 +70,13 @@ wire:
 # export DB_SOURCE="postgresql://user:password@localhost:5432/dbname?sslmode=disable"
 
 migrate-up:
-	@echo "Applying migrations..."
-	@if [ -z "$${DB_SOURCE}" ]; then echo "Error: DB_SOURCE environment variable is not set."; exit 1; fi
-	migrate -database "$${DB_SOURCE}" -path $(MIGRATE_PATH) up
+    @echo "Applying migrations..."
+    docker compose -f docker-compose.dev.yml run --rm -e DB_SOURCE migrate migrate -path /migrations up
 
 migrate-down:
 	@echo "Reverting last migration..."
-	@if [ -z "$${DB_SOURCE}" ]; then echo "Error: DB_SOURCE environment variable is not set."; exit 1; fi
-	migrate -database "$${DB_SOURCE}" -path $(MIGRATE_PATH) down 1
+	@if [ -z "$$DB_SOURCE" ]; then echo "Error: DB_SOURCE environment variable is not set."; exit 1; fi
+	docker compose -f docker-compose.dev.yml run --rm -e DB_SOURCE migrate migrate -database "$$DB_SOURCE" -path /migrations down 1
 
 # Docker development environment
 docker-dev-up:
