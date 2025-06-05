@@ -8,7 +8,7 @@ import (
 
 	"seattle_info_backend/internal/common"
 	"seattle_info_backend/internal/config"
-	"seattle_info_backend/internal/shared"
+
 	// Mocking library like testify/mock can be added later:
 	// "github.com/stretchr/testify/assert"
 	// "github.com/stretchr/testify/mock"
@@ -62,10 +62,15 @@ func (m *MockUserRepository) Update(ctx context.Context, user *User) error {
 	return nil // Assume success for now
 }
 
-func (m *MockUserRepository) FindByEmail(ctx context.Context, email string) (*User, error) { return nil, common.ErrNotFound }
-func (m *MockUserRepository) FindByID(ctx context.Context, id uuid.UUID) (*User, error) { return nil, common.ErrNotFound }
-func (m *MockUserRepository) FindByProvider(ctx context.Context, provider, providerID string) (*User, error) { return nil, common.ErrNotFound }
-
+func (m *MockUserRepository) FindByEmail(ctx context.Context, email string) (*User, error) {
+	return nil, common.ErrNotFound
+}
+func (m *MockUserRepository) FindByID(ctx context.Context, id uuid.UUID) (*User, error) {
+	return nil, common.ErrNotFound
+}
+func (m *MockUserRepository) FindByProvider(ctx context.Context, provider, providerID string) (*User, error) {
+	return nil, common.ErrNotFound
+}
 
 func TestUserService_GetOrCreateUserFromFirebaseClaims(t *testing.T) {
 	logger, _ := zap.NewDevelopment()
@@ -86,7 +91,7 @@ func TestUserService_GetOrCreateUserFromFirebaseClaims(t *testing.T) {
 		},
 		Firebase: firebaseauth.FirebaseInfo{SignInProvider: "google.com"},
 	}
-	
+
 	sampleExistingFirebaseToken := &firebaseauth.Token{
 		UID: "existing_fb_uid", // Matches UID in mockRepo.FindByFirebaseUID
 		Claims: map[string]interface{}{
@@ -101,13 +106,13 @@ func TestUserService_GetOrCreateUserFromFirebaseClaims(t *testing.T) {
 	ctx := context.Background()
 
 	tests := []struct {
-		name             string
-		firebaseToken    *firebaseauth.Token
-		setupMock        func(token *firebaseauth.Token) // To setup specific mock behavior per test
-		wantErr          bool
-		wantWasCreated   bool
-		expectedEmail    *string
-		expectedName     *string
+		name               string
+		firebaseToken      *firebaseauth.Token
+		setupMock          func(token *firebaseauth.Token) // To setup specific mock behavior per test
+		wantErr            bool
+		wantWasCreated     bool
+		expectedEmail      *string
+		expectedName       *string
 		expectedProviderID *string
 	}{
 		{
@@ -117,10 +122,10 @@ func TestUserService_GetOrCreateUserFromFirebaseClaims(t *testing.T) {
 				// mockRepo.FindByFirebaseUIDFunc = func ... (return common.ErrNotFound)
 				// mockRepo.CreateFunc = func ... (return nil)
 			},
-			wantErr:        false,
-			wantWasCreated: true,
-			expectedEmail:  func() *string { e := "newuser@example.com"; return &e }(),
-			expectedName:   func() *string { n := "New User"; return &n }(),
+			wantErr:            false,
+			wantWasCreated:     true,
+			expectedEmail:      func() *string { e := "newuser@example.com"; return &e }(),
+			expectedName:       func() *string { n := "New User"; return &n }(),
 			expectedProviderID: func() *string { p := "google.com"; return &p }(),
 		},
 		{
@@ -132,7 +137,7 @@ func TestUserService_GetOrCreateUserFromFirebaseClaims(t *testing.T) {
 			},
 			wantErr:        false,
 			wantWasCreated: false,
-			expectedEmail:  func() *string { e := "test@example.com"; return &e }(), // Assuming email doesn't change or is verified
+			expectedEmail:  func() *string { e := "test@example.com"; return &e }(),       // Assuming email doesn't change or is verified
 			expectedName:   func() *string { n := "Test User Updated Name"; return &n }(), // Name should be updated
 		},
 		// Add more test cases:
@@ -193,10 +198,10 @@ func TestUserService_GetUserByFirebaseUID(t *testing.T) {
 		expectedEmail *string
 	}{
 		{
-			name:        "User found by Firebase UID",
-			firebaseUID: "existing_fb_uid", // Matches UID in mockRepo.FindByFirebaseUID
-			setupMock:   func(uid string) { /* mockRepo.FindByFirebaseUIDFunc = ... */ },
-			wantErr:     false,
+			name:          "User found by Firebase UID",
+			firebaseUID:   "existing_fb_uid", // Matches UID in mockRepo.FindByFirebaseUID
+			setupMock:     func(uid string) { /* mockRepo.FindByFirebaseUIDFunc = ... */ },
+			wantErr:       false,
 			expectedEmail: func() *string { e := "test@example.com"; return &e }(),
 		},
 		{
@@ -251,4 +256,3 @@ func TestUserService_GetUserByFirebaseUID(t *testing.T) {
 // 4. Configuration of mockRepo per test case within the tt.setupMock functions.
 // 5. The `user.ServiceImplementation` logic for splitting `firebaseToken.Claims["name"]` into
 //    `FirstName` (and potentially `LastName`) needs to be accurately reflected in test expectations.
-```

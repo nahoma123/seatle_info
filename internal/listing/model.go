@@ -73,26 +73,28 @@ const (
 
 type Listing struct {
 	common.BaseModel
-	UserID             uuid.UUID                  `gorm:"type:uuid;not null"`
-	User               user.User                  `gorm:"foreignKey:UserID;references:ID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;"`
-	CategoryID         uuid.UUID                  `gorm:"type:uuid;not null"`
-	Category           category.Category          `gorm:"foreignKey:CategoryID;references:ID;constraint:OnUpdate:CASCADE,OnDelete:RESTRICT;"`
-	SubCategoryID      *uuid.UUID                 `gorm:"type:uuid"`
-	SubCategory        *category.SubCategory      `gorm:"foreignKey:SubCategoryID;references:ID;constraint:OnUpdate:CASCADE,OnDelete:SET NULL;"`
-	Title              string                     `gorm:"type:varchar(255);not null"`
-	Description        string                     `gorm:"type:text;not null"`
-	Status             ListingStatus              `gorm:"type:varchar(50);not null;default:'active'"`
-	ContactName        *string                    `gorm:"type:varchar(150)"`
-	ContactEmail       *string                    `gorm:"type:varchar(255)"`
-	ContactPhone       *string                    `gorm:"type:varchar(50)"`
-	AddressLine1       *string                    `gorm:"type:varchar(255)"`
-	AddressLine2       *string                    `gorm:"type:varchar(255)"`
-	City               *string                    `gorm:"type:varchar(100);default:'Seattle'"`
-	State              *string                    `gorm:"type:varchar(50);default:'WA'"`
-	ZipCode            *string                    `gorm:"type:varchar(20)"`
-	Latitude           *float64                   `gorm:"type:decimal(10,8)"`
-	Longitude          *float64                   `gorm:"type:decimal(11,8)"`
-	Location           *PostGISPoint              `gorm:"type:geography(Point,4326);index:idx_listings_location,type:gist"`
+	UserID        uuid.UUID             `gorm:"type:uuid;not null"`
+	User          user.User             `gorm:"foreignKey:UserID;references:ID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;"`
+	CategoryID    uuid.UUID             `gorm:"type:uuid;not null"`
+	Category      category.Category     `gorm:"foreignKey:CategoryID;references:ID;constraint:OnUpdate:CASCADE,OnDelete:RESTRICT;"`
+	SubCategoryID *uuid.UUID            `gorm:"type:uuid"`
+	SubCategory   *category.SubCategory `gorm:"foreignKey:SubCategoryID;references:ID;constraint:OnUpdate:CASCADE,OnDelete:SET NULL;"`
+	Title         string                `gorm:"type:varchar(255);not null"`
+	Description   string                `gorm:"type:text;not null"`
+	Status        ListingStatus         `gorm:"type:varchar(50);not null;default:'active'"`
+	ContactName   *string               `gorm:"type:varchar(150)"`
+	ContactEmail  *string               `gorm:"type:varchar(255)"`
+	ContactPhone  *string               `gorm:"type:varchar(50)"`
+	AddressLine1  *string               `gorm:"type:varchar(255)"`
+	AddressLine2  *string               `gorm:"type:varchar(255)"`
+	City          *string               `gorm:"type:varchar(100);default:'Seattle'"`
+	State         *string               `gorm:"type:varchar(50);default:'WA'"`
+	ZipCode       *string               `gorm:"type:varchar(20)"`
+	Latitude      *float64              `gorm:"type:decimal(10,8)"`
+	Longitude     *float64              `gorm:"type:decimal(11,8)"`
+	Location      *PostGISPoint         `gorm:"-"`
+	LocationWKT   string                `gorm:"column:location_wkt"`
+
 	ExpiresAt          time.Time                  `gorm:"not null"`
 	IsAdminApproved    bool                       `gorm:"not null;default:false"`
 	BabysittingDetails *ListingDetailsBabysitting `gorm:"foreignKey:ListingID;references:ID;constraint:OnDelete:CASCADE;"`
@@ -281,15 +283,15 @@ type AdminUpdateListingStatusRequest struct {
 
 type ListingSearchQuery struct {
 	common.PaginationQuery
-	SearchTerm     string     `form:"q"`
-	CategoryID     *uuid.UUID `form:"category_id"`
-	SubCategoryID  *uuid.UUID `form:"sub_category_id"`
-	UserID         *uuid.UUID `form:"user_id"`
-	Status         string     `form:"status"`
-	Latitude       *float64   `form:"lat"`
-	Longitude      *float64   `form:"lon"`
-	MaxDistanceKM  *float64   `form:"max_distance_km"`
-	SortBy         string     `form:"sort_by"`
-	SortOrder      string     `form:"sort_order"`
-	IncludeExpired bool       `form:"include_expired"`
+	SearchTerm     string   `form:"q"`
+	CategoryID     *string  `form:"category_id"`
+	SubCategoryID  *string  `form:"sub_category_id"`
+	UserID         *string  `form:"user_id"`
+	Status         string   `form:"status"`
+	Latitude       *float64 `form:"lat"`
+	Longitude      *float64 `form:"lon"`
+	MaxDistanceKM  *float64 `form:"max_distance_km"`
+	SortBy         string   `form:"sort_by"`
+	SortOrder      string   `form:"sort_order"`
+	IncludeExpired bool     `form:"include_expired"`
 }

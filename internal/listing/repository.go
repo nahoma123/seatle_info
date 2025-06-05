@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -210,13 +211,13 @@ func (r *gormRepository) Search(ctx context.Context, queryParams ListingSearchQu
 		searchTerm := "%" + strings.ToLower(queryParams.SearchTerm) + "%"
 		dbQuery = dbQuery.Where("LOWER(listings.title) LIKE ? OR LOWER(listings.description) LIKE ?", searchTerm, searchTerm)
 	}
-	if queryParams.CategoryID != nil && *queryParams.CategoryID != uuid.Nil {
+	if queryParams.CategoryID != nil && *queryParams.CategoryID != "" {
 		dbQuery = dbQuery.Where("listings.category_id = ?", *queryParams.CategoryID)
 	}
-	if queryParams.SubCategoryID != nil && *queryParams.SubCategoryID != uuid.Nil {
+	if queryParams.SubCategoryID != nil && *queryParams.SubCategoryID != "" {
 		dbQuery = dbQuery.Where("listings.sub_category_id = ?", *queryParams.SubCategoryID)
 	}
-	if queryParams.UserID != nil && *queryParams.UserID != uuid.Nil {
+	if queryParams.UserID != nil && *queryParams.UserID != "" {
 		dbQuery = dbQuery.Where("listings.user_id = ?", *queryParams.UserID)
 	}
 	if queryParams.Status != "" {
@@ -290,7 +291,22 @@ func (r *gormRepository) Search(ctx context.Context, queryParams ListingSearchQu
 	pagination := common.NewPagination(totalItems, queryParams.Page, queryParams.PageSize)
 	dbQuery = dbQuery.Offset(pagination.CurrentPage - 1*pagination.PageSize).Limit(pagination.PageSize) // Correct offset calculation
 
-	// --- Execute Query ---
+	dbQuery = dbQuery.
+		Omit("location").                                         // ① drop geometry
+		Select("listings.*, ST_AsText(location) AS location_wkt") // ② add WKT
+
+	for i := range listings {
+		if listings[i].LocationWKT != "" {
+			point, err := parseWKT(listings[i].LocationWKT)
+			if err != nil {
+				// Log or handle error properly
+				fmt.Printf("Failed to parse WKT: %v\n", err)
+				continue
+			}
+			listings[i].Location = point
+		}
+	}
+
 	if err := dbQuery.Find(&listings).Error; err != nil {
 		return nil, nil, fmt.Errorf("failed to search listings: %w", err)
 	}
@@ -312,6 +328,35 @@ func (r *gormRepository) UpdateStatus(ctx context.Context, id uuid.UUID, status 
 		return common.ErrNotFound.WithDetails("Listing not found.")
 	}
 	return nil
+}
+
+func parseWKT(wkt string) (*PostGISPoint, error) {
+	// Expected format: "POINT(-122.315804 47.615135)"
+	wkt = strings.TrimSpace(wkt)
+
+	if !strings.HasPrefix(wkt, "POINT(") || !strings.HasSuffix(wkt, ")") {
+		return nil, fmt.Errorf("invalid WKT format: %s", wkt)
+	}
+
+	coords := strings.TrimPrefix(wkt, "POINT(")
+	coords = strings.TrimSuffix(coords, ")")
+	parts := strings.Fields(coords)
+
+	if len(parts) != 2 {
+		return nil, errors.New("invalid number of coordinates in POINT")
+	}
+
+	lon, err1 := strconv.ParseFloat(parts[0], 64)
+	lat, err2 := strconv.ParseFloat(parts[1], 64)
+
+	if err1 != nil || err2 != nil {
+		return nil, fmt.Errorf("invalid coordinates: %v, %v", err1, err2)
+	}
+
+	return &PostGISPoint{
+		Lon: lon,
+		Lat: lat,
+	}, nil
 }
 
 // FindExpiredListings retrieves listings whose expires_at is in the past and status is not 'expired'.

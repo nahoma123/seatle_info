@@ -11,10 +11,11 @@ import (
 // Category represents the category model in the database.
 type Category struct {
 	common.BaseModel
-	Name          string        `gorm:"type:varchar(100);not null;uniqueIndex:idx_categories_name,unique"`
-	Slug          string        `gorm:"type:varchar(100);not null;uniqueIndex:idx_categories_slug,unique"`
-	Description   *string       `gorm:"type:text"`
-	SubCategories []SubCategory `gorm:"foreignKey:CategoryID;constraint:OnDelete:CASCADE;"`
+	Name             string        `gorm:"type:varchar(100);not null;uniqueIndex:idx_categories_name,unique"`
+	Slug             string        `gorm:"type:varchar(100);not null;uniqueIndex:idx_categories_slug,unique"`
+	Description      *string       `gorm:"type:text"`
+	SubCategories    []SubCategory `gorm:"foreignKey:CategoryID;constraint:OnDelete:CASCADE;"`
+	SubCategoryCount int           `gorm:"-:all"`
 }
 
 // TableName specifies the table name for the Category model.
