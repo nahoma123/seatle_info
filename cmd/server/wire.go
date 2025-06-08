@@ -13,6 +13,7 @@ import (
 	"seattle_info_backend/internal/firebase" // Added
 	"seattle_info_backend/internal/jobs"
 	"seattle_info_backend/internal/listing"
+	"seattle_info_backend/internal/notification" // Add this
 	"seattle_info_backend/internal/platform/database"
 	"seattle_info_backend/internal/platform/logger"
 	"seattle_info_backend/internal/shared"
@@ -34,27 +35,46 @@ func initializeServer(cfg *config.Config) (*app.Server, func(), error) {
 		// Firebase Service (New)
 		firebase.NewFirebaseService,
 
-		// Core User Services (Adjusted)
-		user.NewGORMRepository, // Provides user.Repository
-		user.NewService,        // Provides *user.ServiceImplementation (constructor changed)
-		wire.Bind(new(shared.Service), new(*user.ServiceImplementation)), // This binding is still key
+		// Core User Services
+		user.NewGORMRepository, // Returns user.Repository
+		user.NewService,        // Returns *user.ServiceImplementation
+		wire.Bind(new(shared.Service), new(*user.ServiceImplementation)), // Binds *user.ServiceImplementation to shared.Service interface
 
-		// Handlers (Adjusted)
-		// auth.NewHandler needs shared.Service (constructor changed)
+		// Auth Handler (depends on shared.Service and firebase.Service)
 		auth.NewHandler,
-		user.NewHandler, // Needs shared.Service
 
-		// Other Modules
-		category.NewGORMRepository,
-		category.NewService,
+		// User Handler (depends on shared.Service)
+		user.NewHandler,
+
+		// Category Module
+		category.NewGORMRepository, // Returns category.Repository
+		category.NewService,        // Returns category.Service (interface)
+		// No bind needed for category.Service as NewService returns the interface.
+		// wire.Bind(new(category.Service), new(*category.ServiceImplementation)), // REMOVED
 		category.NewHandler,
-		listing.NewGORMRepository,
-		listing.NewService,
+
+		// Notification Module
+		notification.NewGORMRepository, // Returns notification.Repository
+		// No bind needed for notification.Repository as NewGORMRepository returns the interface.
+		// wire.Bind(new(notification.Repository), new(*notification.GORMRepository)), // REMOVED
+		notification.NewService, // Returns notification.Service (interface)
+		// No bind needed for notification.Service as NewService returns the interface.
+		// wire.Bind(new(notification.Service), new(*notification.ServiceImplementation)), // REMOVED
+		notification.NewHandler,
+
+		// Listing Module (listing.NewService depends on notification.Service)
+		listing.NewGORMRepository, // Returns listing.Repository
+		// No bind needed for listing.Repository as NewGORMRepository returns the interface.
+		// wire.Bind(new(listing.Repository), new(*listing.GORMRepository)), // REMOVED
+		listing.NewService, // Returns listing.Service (interface)
+		// No bind needed for listing.Service as NewService returns the interface.
+		// wire.Bind(new(listing.Service), new(*listing.ServiceImplementation)), // REMOVED
 		listing.NewHandler,
+
 		jobs.NewListingExpiryJob,
 
 		// Application Layer
-		app.NewServer,
+		app.NewServer, // app.NewServer now needs notification.Handler
 	)
 	return nil, nil, nil
 }

@@ -23,18 +23,19 @@ type Repository interface {
 	FindByFirebaseUID(ctx context.Context, firebaseUID string) (*User, error)
 }
 
-type gormRepository struct {
+// GORMRepository implements the Repository interface using GORM.
+type GORMRepository struct {
 	db *gorm.DB
 }
 
 // NewGORMRepository creates a new GORM user repository.
 // THIS MUST RETURN THE INTERFACE TYPE: user.Repository
 func NewGORMRepository(db *gorm.DB) Repository {
-	return &gormRepository{db: db}
+	return &GORMRepository{db: db}
 }
 
 // Create inserts a new user record into the database.
-func (r *gormRepository) Create(ctx context.Context, user *User) error {
+func (r *GORMRepository) Create(ctx context.Context, user *User) error {
 	if user.Email != nil {
 		*user.Email = strings.ToLower(strings.TrimSpace(*user.Email))
 	}
@@ -57,7 +58,7 @@ func (r *gormRepository) Create(ctx context.Context, user *User) error {
 }
 
 // FindByEmail retrieves a user by their email address.
-func (r *gormRepository) FindByEmail(ctx context.Context, email string) (*User, error) {
+func (r *GORMRepository) FindByEmail(ctx context.Context, email string) (*User, error) {
 	var userModel User // Use a different variable name if 'user' is a parameter elsewhere causing shadow
 	normalizedEmail := strings.ToLower(strings.TrimSpace(email))
 	err := r.db.WithContext(ctx).Where("email = ?", normalizedEmail).First(&userModel).Error
@@ -71,7 +72,7 @@ func (r *gormRepository) FindByEmail(ctx context.Context, email string) (*User, 
 }
 
 // FindByFirebaseUID retrieves a user by their Firebase UID.
-func (r *gormRepository) FindByFirebaseUID(ctx context.Context, firebaseUID string) (*User, error) {
+func (r *GORMRepository) FindByFirebaseUID(ctx context.Context, firebaseUID string) (*User, error) {
 	var userModel User
 	err := r.db.WithContext(ctx).Where("firebase_uid = ?", firebaseUID).First(&userModel).Error
 	if err != nil {
@@ -84,7 +85,7 @@ func (r *gormRepository) FindByFirebaseUID(ctx context.Context, firebaseUID stri
 }
 
 // FindByID retrieves a user by their ID.
-func (r *gormRepository) FindByID(ctx context.Context, id uuid.UUID) (*User, error) {
+func (r *GORMRepository) FindByID(ctx context.Context, id uuid.UUID) (*User, error) {
 	var userModel User
 	err := r.db.WithContext(ctx).Where("id = ?", id).First(&userModel).Error
 	if err != nil {
@@ -97,7 +98,7 @@ func (r *gormRepository) FindByID(ctx context.Context, id uuid.UUID) (*User, err
 }
 
 // Update modifies an existing user record in the database.
-func (r *gormRepository) Update(ctx context.Context, user *User) error {
+func (r *GORMRepository) Update(ctx context.Context, user *User) error {
 	if user.Email != nil {
 		*user.Email = strings.ToLower(strings.TrimSpace(*user.Email))
 	}
@@ -118,7 +119,7 @@ func (r *gormRepository) Update(ctx context.Context, user *User) error {
 }
 
 // FindByProvider retrieves a user by their OAuth provider and provider-specific ID.
-func (r *gormRepository) FindByProvider(ctx context.Context, authProvider string, providerID string) (*User, error) {
+func (r *GORMRepository) FindByProvider(ctx context.Context, authProvider string, providerID string) (*User, error) {
 	var userModel User
 	err := r.db.WithContext(ctx).
 		Where("auth_provider = ? AND provider_id = ?", authProvider, providerID).

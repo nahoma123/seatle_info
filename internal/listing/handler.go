@@ -36,6 +36,7 @@ func (h *Handler) RegisterRoutes(router *gin.RouterGroup, authMW gin.HandlerFunc
 	{
 		listingGroup.GET("", h.searchListings)
 		listingGroup.GET("/:id", h.getListingByID)
+		listingGroup.GET("/recent", h.getRecentListings) // New Public Route
 
 		authedListingGroup := listingGroup.Group("")
 		authedListingGroup.Use(authMW) // Apply general auth
@@ -239,4 +240,36 @@ func (h *Handler) adminApproveListing(c *gin.Context) {
 		return
 	}
 	common.RespondOK(c, "Admin: Listing approved successfully.", ToListingResponse(listing, true))
+}
+
+func (h *Handler) getRecentListings(c *gin.Context) {
+	page, pageSize := common.GetPaginationParams(c)
+
+	listings, pagination, err := h.service.GetRecentListings(c.Request.Context(), page, pageSize)
+	if err != nil {
+		common.RespondWithError(c, err) // Service layer should return appropriate common.APIError
+		return
+	}
+	// For public recent listings, contact info is hidden by the service layer (ToListingResponse called with false)
+	common.RespondPaginated(c, "Recent listings retrieved successfully.", listings, pagination)
+}
+
+// RegisterEventRoutes sets up the routes for event specific listing operations.
+func (h *Handler) RegisterEventRoutes(router *gin.RouterGroup) {
+	// The router group passed here is expected to be something like /api/v1/events
+	router.GET("/upcoming", h.getUpcomingEvents)
+}
+
+func (h *Handler) getUpcomingEvents(c *gin.Context) {
+	page, pageSize := common.GetPaginationParams(c)
+	// Default page_size for events as per issue is 10.
+	// common.GetPaginationParams uses 10 if 'page_size' is not provided or invalid, so this should be fine.
+
+	events, pagination, err := h.service.GetUpcomingEvents(c.Request.Context(), page, pageSize)
+	if err != nil {
+		common.RespondWithError(c, err) // Service layer should return appropriate common.APIError
+		return
+	}
+	// Contact info is hidden by the service layer (ToListingResponse called with false)
+	common.RespondPaginated(c, "Upcoming events retrieved successfully.", events, pagination)
 }

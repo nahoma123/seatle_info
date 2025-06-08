@@ -32,18 +32,20 @@ type Repository interface {
 	DeleteSubCategory(ctx context.Context, id uuid.UUID) error
 }
 
-type gormRepository struct {
+// GORMRepository implements the Repository interface using GORM.
+type GORMRepository struct {
 	db *gorm.DB
 }
 
 // NewGORMRepository creates a new GORM category repository.
 func NewGORMRepository(db *gorm.DB) Repository {
-	return &gormRepository{db: db}
+	return &GORMRepository{db: db}
 }
 
 // --- Category Methods ---
 
-func (r *gormRepository) CreateCategory(ctx context.Context, category *Category) error {
+// CreateCategory creates a new category.
+func (r *GORMRepository) CreateCategory(ctx context.Context, category *Category) error {
 	category.Slug = strings.ToLower(strings.TrimSpace(category.Slug)) // Normalize slug
 	err := r.db.WithContext(ctx).Create(category).Error
 	if err != nil {
@@ -55,7 +57,8 @@ func (r *gormRepository) CreateCategory(ctx context.Context, category *Category)
 	return nil
 }
 
-func (r *gormRepository) FindCategoryByID(ctx context.Context, id uuid.UUID, preloadSubcategories bool) (*Category, error) {
+// FindCategoryByID finds a category by its ID.
+func (r *GORMRepository) FindCategoryByID(ctx context.Context, id uuid.UUID, preloadSubcategories bool) (*Category, error) {
 	var category Category
 	query := r.db.WithContext(ctx)
 	if preloadSubcategories {
@@ -71,7 +74,8 @@ func (r *gormRepository) FindCategoryByID(ctx context.Context, id uuid.UUID, pre
 	return &category, nil
 }
 
-func (r *gormRepository) FindCategoryBySlug(ctx context.Context, slug string, preloadSubcategories bool) (*Category, error) {
+// FindCategoryBySlug finds a category by its slug.
+func (r *GORMRepository) FindCategoryBySlug(ctx context.Context, slug string, preloadSubcategories bool) (*Category, error) {
 	var category Category
 	normalizedSlug := strings.ToLower(strings.TrimSpace(slug))
 	query := r.db.WithContext(ctx)
@@ -88,30 +92,23 @@ func (r *gormRepository) FindCategoryBySlug(ctx context.Context, slug string, pr
 	return &category, nil
 }
 
-func (r *gormRepository) FindAllCategories(ctx context.Context, preloadSubcategories bool) ([]Category, error) {
+// FindAllCategories retrieves all categories, optionally preloading their subcategories.
+func (r *GORMRepository) FindAllCategories(ctx context.Context, preloadSubcategories bool) ([]Category, error) {
 	var categories []Category
 	query := r.db.WithContext(ctx).Model(&Category{})
 
-	// Define the subquery to count subcategories
-	// 'categories.id' refers to the 'id' column of the 'categories' table in the outer query.
-	// Ensure 'categories.id' matches the actual primary key column name of your categories table,
-	// which is likely `id` if you're using `common.BaseModel` that defines `ID`.
 	subQuery := r.db.Model(&SubCategory{}).
 		Select("count(*)").
-		Where("sub_categories.category_id = categories.id") // Assuming PK of Category is 'id'
+		Where("sub_categories.category_id = categories.id")
 
-	// Select all columns from categories table AND the result of the subquery aliased as sub_category_count
-	// GORM will map 'sub_category_count' to the 'SubCategoryCount' field in the Category struct.
 	query = query.Select("categories.*, (?) as sub_category_count", subQuery)
 
 	if preloadSubcategories {
 		query = query.Preload("SubCategories", func(db *gorm.DB) *gorm.DB {
-			// Assuming SubCategory has a 'name' field for ordering
 			return db.Order("sub_categories.name ASC")
 		})
 	}
 
-	// Assuming Category has a 'name' field for ordering
 	err := query.Order("categories.name ASC").Find(&categories).Error
 	if err != nil {
 		return nil, err
@@ -120,7 +117,8 @@ func (r *gormRepository) FindAllCategories(ctx context.Context, preloadSubcatego
 
 }
 
-func (r *gormRepository) UpdateCategory(ctx context.Context, category *Category) error {
+// UpdateCategory updates an existing category.
+func (r *GORMRepository) UpdateCategory(ctx context.Context, category *Category) error {
 	if category.Slug != "" {
 		category.Slug = strings.ToLower(strings.TrimSpace(category.Slug)) // Normalize slug
 	}
@@ -134,10 +132,8 @@ func (r *gormRepository) UpdateCategory(ctx context.Context, category *Category)
 	return nil
 }
 
-func (r *gormRepository) DeleteCategory(ctx context.Context, id uuid.UUID) error {
-	// GORM's default behavior with "constraint:OnDelete:CASCADE" in the model tag for SubCategories
-	// should handle cascading deletes at the database level if the FK constraint is set up that way.
-	// If not, you might need to delete subcategories manually first or ensure DB schema handles it.
+// DeleteCategory deletes a category by ID, ensuring no listings are associated.
+func (r *GORMRepository) DeleteCategory(ctx context.Context, id uuid.UUID) error {
 	// The migration `000001_create_initial_tables.up.sql` has `ON DELETE CASCADE` for sub_categories.
 	// So, this should be fine.
 	// We also need to consider listings associated with this category. The FK is ON DELETE RESTRICT.
@@ -166,7 +162,8 @@ func (r *gormRepository) DeleteCategory(ctx context.Context, id uuid.UUID) error
 
 // --- SubCategory Methods ---
 
-func (r *gormRepository) CreateSubCategory(ctx context.Context, subCategory *SubCategory) error {
+// CreateSubCategory creates a new subcategory.
+func (r *GORMRepository) CreateSubCategory(ctx context.Context, subCategory *SubCategory) error {
 	subCategory.Slug = strings.ToLower(strings.TrimSpace(subCategory.Slug)) // Normalize slug
 	err := r.db.WithContext(ctx).Create(subCategory).Error
 	if err != nil {
@@ -178,7 +175,8 @@ func (r *gormRepository) CreateSubCategory(ctx context.Context, subCategory *Sub
 	return nil
 }
 
-func (r *gormRepository) FindSubCategoryByID(ctx context.Context, id uuid.UUID) (*SubCategory, error) {
+// FindSubCategoryByID finds a subcategory by its ID.
+func (r *GORMRepository) FindSubCategoryByID(ctx context.Context, id uuid.UUID) (*SubCategory, error) {
 	var subCategory SubCategory
 	err := r.db.WithContext(ctx).Preload("Category").First(&subCategory, "id = ?", id).Error
 	if err != nil {
@@ -190,13 +188,15 @@ func (r *gormRepository) FindSubCategoryByID(ctx context.Context, id uuid.UUID) 
 	return &subCategory, nil
 }
 
-func (r *gormRepository) FindSubCategoriesByCategoryID(ctx context.Context, categoryID uuid.UUID) ([]SubCategory, error) {
+// FindSubCategoriesByCategoryID finds all subcategories for a given category ID.
+func (r *GORMRepository) FindSubCategoriesByCategoryID(ctx context.Context, categoryID uuid.UUID) ([]SubCategory, error) {
 	var subCategories []SubCategory
 	err := r.db.WithContext(ctx).Where("category_id = ?", categoryID).Order("name ASC").Find(&subCategories).Error
 	return subCategories, err
 }
 
-func (r *gormRepository) UpdateSubCategory(ctx context.Context, subCategory *SubCategory) error {
+// UpdateSubCategory updates an existing subcategory.
+func (r *GORMRepository) UpdateSubCategory(ctx context.Context, subCategory *SubCategory) error {
 	if subCategory.Slug != "" {
 		subCategory.Slug = strings.ToLower(strings.TrimSpace(subCategory.Slug)) // Normalize slug
 	}
@@ -210,7 +210,8 @@ func (r *gormRepository) UpdateSubCategory(ctx context.Context, subCategory *Sub
 	return nil
 }
 
-func (r *gormRepository) DeleteSubCategory(ctx context.Context, id uuid.UUID) error {
+// DeleteSubCategory deletes a subcategory by ID.
+func (r *GORMRepository) DeleteSubCategory(ctx context.Context, id uuid.UUID) error {
 	// Check for associated listings with this subcategory
 	// The FK on listings for sub_category_id is ON DELETE SET NULL, so this is safe to delete
 	// from a referential integrity perspective for listings. Listings will just lose their sub_category_id.

@@ -31,7 +31,8 @@ type Service interface {
 	GetSubCategoryByID(ctx context.Context, id uuid.UUID) (*SubCategory, error)
 }
 
-type service struct {
+// ServiceImplementation implements the category Service interface.
+type ServiceImplementation struct {
 	repo   Repository
 	logger *zap.Logger
 	config *config.Config // If needed for category-specific configs
@@ -39,7 +40,7 @@ type service struct {
 
 // NewService creates a new category service.
 func NewService(repo Repository, logger *zap.Logger, cfg *config.Config) Service {
-	return &service{
+	return &ServiceImplementation{
 		repo:   repo,
 		logger: logger,
 		config: cfg,
@@ -48,7 +49,8 @@ func NewService(repo Repository, logger *zap.Logger, cfg *config.Config) Service
 
 // --- Admin Methods ---
 
-func (s *service) AdminCreateCategory(ctx context.Context, req AdminCreateCategoryRequest) (*Category, error) {
+// AdminCreateCategory creates a new category.
+func (s *ServiceImplementation) AdminCreateCategory(ctx context.Context, req AdminCreateCategoryRequest) (*Category, error) {
 	finalSlug := strings.TrimSpace(req.Slug)
 	if finalSlug == "" {
 		finalSlug = slug.Make(req.Name) // Generate slug if not provided
@@ -70,7 +72,8 @@ func (s *service) AdminCreateCategory(ctx context.Context, req AdminCreateCatego
 	return category, nil
 }
 
-func (s *service) AdminCreateSubCategory(ctx context.Context, categoryID uuid.UUID, req AdminCreateSubCategoryRequest) (*SubCategory, error) {
+// AdminCreateSubCategory creates a new subcategory under a given parent category.
+func (s *ServiceImplementation) AdminCreateSubCategory(ctx context.Context, categoryID uuid.UUID, req AdminCreateSubCategoryRequest) (*SubCategory, error) {
 	// Check if parent category exists
 	_, err := s.repo.FindCategoryByID(ctx, categoryID, false)
 	if err != nil {
@@ -101,7 +104,8 @@ func (s *service) AdminCreateSubCategory(ctx context.Context, categoryID uuid.UU
 	return subCategory, nil
 }
 
-func (s *service) AdminUpdateCategory(ctx context.Context, id uuid.UUID, req AdminCreateCategoryRequest) (*Category, error) {
+// AdminUpdateCategory updates an existing category.
+func (s *ServiceImplementation) AdminUpdateCategory(ctx context.Context, id uuid.UUID, req AdminCreateCategoryRequest) (*Category, error) {
 	category, err := s.repo.FindCategoryByID(ctx, id, false)
 	if err != nil {
 		return nil, err // ErrNotFound or other DB error
@@ -123,7 +127,8 @@ func (s *service) AdminUpdateCategory(ctx context.Context, id uuid.UUID, req Adm
 	return category, nil
 }
 
-func (s *service) AdminUpdateSubCategory(ctx context.Context, id uuid.UUID, req AdminCreateSubCategoryRequest) (*SubCategory, error) {
+// AdminUpdateSubCategory updates an existing subcategory.
+func (s *ServiceImplementation) AdminUpdateSubCategory(ctx context.Context, id uuid.UUID, req AdminCreateSubCategoryRequest) (*SubCategory, error) {
 	subCategory, err := s.repo.FindSubCategoryByID(ctx, id)
 	if err != nil {
 		return nil, err
@@ -145,8 +150,8 @@ func (s *service) AdminUpdateSubCategory(ctx context.Context, id uuid.UUID, req 
 	return subCategory, nil
 }
 
-func (s *service) AdminDeleteCategory(ctx context.Context, id uuid.UUID) error {
-	// Repository DeleteCategory already checks for associated listings.
+// AdminDeleteCategory deletes a category by its ID.
+func (s *ServiceImplementation) AdminDeleteCategory(ctx context.Context, id uuid.UUID) error {
 	if err := s.repo.DeleteCategory(ctx, id); err != nil {
 		s.logger.Error("Failed to delete category", zap.Error(err), zap.String("id", id.String()))
 		return err
@@ -155,8 +160,8 @@ func (s *service) AdminDeleteCategory(ctx context.Context, id uuid.UUID) error {
 	return nil
 }
 
-func (s *service) AdminDeleteSubCategory(ctx context.Context, id uuid.UUID) error {
-	// Repository DeleteSubCategory handles associated listings (sets sub_category_id to NULL).
+// AdminDeleteSubCategory deletes a subcategory by its ID.
+func (s *ServiceImplementation) AdminDeleteSubCategory(ctx context.Context, id uuid.UUID) error {
 	if err := s.repo.DeleteSubCategory(ctx, id); err != nil {
 		s.logger.Error("Failed to delete subcategory", zap.Error(err), zap.String("id", id.String()))
 		return err
@@ -167,16 +172,17 @@ func (s *service) AdminDeleteSubCategory(ctx context.Context, id uuid.UUID) erro
 
 // --- Public Methods ---
 
-func (s *service) GetCategoryByID(ctx context.Context, id uuid.UUID, preloadSubcategories bool) (*Category, error) {
+// GetCategoryByID retrieves a category by its ID.
+func (s *ServiceImplementation) GetCategoryByID(ctx context.Context, id uuid.UUID, preloadSubcategories bool) (*Category, error) {
 	category, err := s.repo.FindCategoryByID(ctx, id, preloadSubcategories)
 	if err != nil {
-		// Repo returns common.ErrNotFound if not found
 		return nil, err
 	}
 	return category, nil
 }
 
-func (s *service) GetCategoryBySlug(ctx context.Context, slugToFind string, preloadSubcategories bool) (*Category, error) {
+// GetCategoryBySlug retrieves a category by its slug.
+func (s *ServiceImplementation) GetCategoryBySlug(ctx context.Context, slugToFind string, preloadSubcategories bool) (*Category, error) {
 	category, err := s.repo.FindCategoryBySlug(ctx, slugToFind, preloadSubcategories)
 	if err != nil {
 		return nil, err
@@ -184,17 +190,18 @@ func (s *service) GetCategoryBySlug(ctx context.Context, slugToFind string, prel
 	return category, nil
 }
 
-func (s *service) GetAllCategories(ctx context.Context, preloadSubcategories bool) ([]Category, error) {
+// GetAllCategories retrieves all categories, optionally preloading subcategories.
+func (s *ServiceImplementation) GetAllCategories(ctx context.Context, preloadSubcategories bool) ([]Category, error) {
 	categories, err := s.repo.FindAllCategories(ctx, preloadSubcategories)
 	if err != nil {
 		s.logger.Error("Failed to get all categories", zap.Error(err))
-		// Don't return raw db error to client, wrap if necessary, but repo errors are often fine
 		return nil, common.ErrInternalServer.WithDetails("Could not retrieve categories.")
 	}
 	return categories, nil
 }
 
-func (s *service) GetSubCategoryByID(ctx context.Context, id uuid.UUID) (*SubCategory, error) {
+// GetSubCategoryByID retrieves a subcategory by its ID.
+func (s *ServiceImplementation) GetSubCategoryByID(ctx context.Context, id uuid.UUID) (*SubCategory, error) {
 	subCategory, err := s.repo.FindSubCategoryByID(ctx, id)
 	if err != nil {
 		return nil, err

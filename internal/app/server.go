@@ -16,6 +16,7 @@ import (
 	"seattle_info_backend/internal/jobs"
 	"seattle_info_backend/internal/listing"
 	"seattle_info_backend/internal/middleware"
+	"seattle_info_backend/internal/notification" // Add this
 	"seattle_info_backend/internal/shared"
 	"seattle_info_backend/internal/user"
 
@@ -36,9 +37,10 @@ type Server struct {
 
 	// Handlers
 	userHandler     *user.Handler
-	authHandler     *auth.Handler
-	categoryHandler *category.Handler
-	listingHandler  *listing.Handler
+	authHandler         *auth.Handler
+	categoryHandler     *category.Handler
+	listingHandler      *listing.Handler
+	notificationHandler *notification.Handler // Add this
 
 	// Jobs
 	listingExpiryJob *jobs.ListingExpiryJob
@@ -56,6 +58,7 @@ func NewServer(
 	authHandler *auth.Handler,
 	categoryHandler *category.Handler,
 	listingHandler *listing.Handler,
+	notificationHandler *notification.Handler, // Add this
 	listingExpiryJob *jobs.ListingExpiryJob,
 	db *gorm.DB, // Added db *gorm.DB
 	firebaseService *firebase.FirebaseService,
@@ -99,6 +102,23 @@ func NewServer(
 	categoryHandler.RegisterRoutes(v1, authMW, adminRoleMW)
 	listingHandler.RegisterRoutes(v1, authMW, adminRoleMW)
 
+	// New route group for events:
+	// This defines /api/v1/events
+	// The listingHandler.RegisterEventRoutes will then add /upcoming to this, making it /api/v1/events/upcoming
+	eventAPIs := v1.Group("/events")
+	listingHandler.RegisterEventRoutes(eventAPIs) // This uses the new method in listing.Handler
+
+	// Register notification routes (these require authentication)
+	// The local variable 'authMW' is in scope here and can be used directly.
+	// 's.authMW' would be used if we were in a method of Server after NewServer has completed.
+	if notificationHandler != nil {
+		notificationGroup := v1.Group("/notifications", authMW)
+		notificationHandler.RegisterRoutes(notificationGroup)
+	} else {
+		// This case should ideally not happen if DI is correct.
+		logger.Warn("Notification handler is nil, routes will not be registered.")
+	}
+
 	addr := fmt.Sprintf("%s:%s", cfg.ServerHost, cfg.ServerPort)
 	httpServer := &http.Server{
 		Addr:         addr,
@@ -114,12 +134,13 @@ func NewServer(
 		cfg:              cfg,
 		logger:           logger,
 		userHandler:      userHandler,
-		authHandler:      authHandler,
-		categoryHandler:  categoryHandler,
-		listingHandler:   listingHandler,
-		listingExpiryJob: listingExpiryJob,
-		authMW:           authMW,
-		adminRoleMW:      adminRoleMW,
+		authHandler:         authHandler,
+		categoryHandler:     categoryHandler,
+		listingHandler:      listingHandler,
+		notificationHandler: notificationHandler, // Add this
+		listingExpiryJob:    listingExpiryJob,
+		authMW:              authMW,
+		adminRoleMW:         adminRoleMW,
 		// firebaseService: firebaseService, // Store if needed elsewhere
 		// userService: userService,
 	}, nil

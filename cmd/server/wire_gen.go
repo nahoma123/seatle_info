@@ -17,6 +17,7 @@ import (
 	"seattle_info_backend/internal/firebase"
 	"seattle_info_backend/internal/jobs"
 	"seattle_info_backend/internal/listing"
+	"seattle_info_backend/internal/notification"
 	"seattle_info_backend/internal/platform/database"
 	"seattle_info_backend/internal/platform/logger"
 	"seattle_info_backend/internal/user"
@@ -42,14 +43,17 @@ func initializeServer(cfg *config.Config) (*app.Server, func(), error) {
 	service := category.NewService(categoryRepository, zapLogger, cfg)
 	categoryHandler := category.NewHandler(service, zapLogger)
 	listingRepository := listing.NewGORMRepository(db)
-	listingService := listing.NewService(listingRepository, repository, service, cfg, zapLogger)
+	notificationRepository := notification.NewGORMRepository(db)
+	notificationService := notification.NewService(notificationRepository, zapLogger)
+	listingService := listing.NewService(listingRepository, repository, service, notificationService, cfg, zapLogger)
 	listingHandler := listing.NewHandler(listingService, zapLogger)
+	notificationHandler := notification.NewHandler(notificationService, zapLogger)
 	listingExpiryJob := jobs.NewListingExpiryJob(listingService, zapLogger, cfg)
 	firebaseService, err := firebase.NewFirebaseService(cfg, zapLogger)
 	if err != nil {
 		return nil, nil, err
 	}
-	server, err := app.NewServer(cfg, zapLogger, handler, authHandler, categoryHandler, listingHandler, listingExpiryJob, db, firebaseService, serviceImplementation)
+	server, err := app.NewServer(cfg, zapLogger, handler, authHandler, categoryHandler, listingHandler, notificationHandler, listingExpiryJob, db, firebaseService, serviceImplementation)
 	if err != nil {
 		return nil, nil, err
 	}

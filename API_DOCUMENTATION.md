@@ -268,4 +268,210 @@ Manages listings posted by users.
     }
     ```
 *   **Error Responses**: `400`, `401`, `422`, `500`
-```
+
+
+## API Endpoints
+
+---
+
+### Recent Listings
+
+#### GET `/api/v1/listings/recent`
+
+Fetches a paginated list of the most recently created active and approved listings, excluding items categorized as 'events'.
+
+-   **Authentication:** Public
+-   **Query Parameters:**
+    -   `page` (int, optional, default: 1): The page number for pagination.
+    -   `page_size` (int, optional, default: 3): The number of items per page.
+-   **Successful Response (200 OK):**
+    ```json
+    {
+        "status": "success",
+        "message": "Recent listings retrieved successfully.",
+        "data": [
+            {
+                "id": "uuid-goes-here",
+                "title": "Beautiful Handmade Scarf",
+                "description": "A warm and cozy handmade scarf, perfect for Seattle winters.",
+                "status": "active",
+                "created_at": "2023-10-26T10:00:00Z",
+                "expires_at": "2023-11-26T10:00:00Z",
+                // "contact_name": "Jane Doe",
+                // "contact_email": "jane.doe@example.com",
+                // "contact_phone": "123-456-7890",
+                "address_line1": "123 Main St",
+                "city": "Seattle",
+                "state": "WA",
+                "zip_code": "98101",
+                "latitude": 47.6062,
+                "longitude": -122.3321,
+                "category_info": {
+                    "id": "category-uuid",
+                    "name": "Handmade Goods",
+                    "slug": "handmade-goods"
+                },
+                "user_info": {
+                    "id": "user-uuid",
+                    "first_name": "John",
+                    "last_name": "Doe"
+                }
+            }
+        ],
+        "pagination": {
+            "current_page": 1,
+            "page_size": 3,
+            "total_records": 50,
+            "total_pages": 17
+        }
+    }
+    ```
+
+---
+
+### Upcoming Events
+
+#### GET `/api/v1/events/upcoming`
+
+Fetches a paginated list of upcoming active and approved events, ordered by event date and time.
+
+-   **Authentication:** Public
+-   **Query Parameters:**
+    -   `page` (int, optional, default: 1): The page number for pagination.
+    -   `page_size` (int, optional, default: 10): The number of items per page.
+-   **Successful Response (200 OK):**
+    ```json
+    {
+        "status": "success",
+        "message": "Upcoming events retrieved successfully.",
+        "data": [
+            {
+                "id": "listing-uuid-for-event",
+                "title": "Community Music Festival",
+                "description": "Join us for a day of live music, food trucks, and fun!",
+                "status": "active",
+                "created_at": "2023-10-01T14:30:00Z",
+                "expires_at": "2023-11-16T00:00:00Z",
+                "contact_name": "Event Organizer Co.",
+                "contact_email": "info@eventfest.com",
+                "contact_phone": "555-123-4567",
+                "address_line1": "456 Park Ave",
+                "city": "Seattle",
+                "state": "WA",
+                "zip_code": "98104",
+                "latitude": 47.6000,
+                "longitude": -122.3300,
+                "event_details": {
+                    "event_date": "2023-11-15",
+                    "event_time": "12:00:00",
+                    "organizer_name": "Community Events LLC",
+                    "venue_name": "City Park Amphitheater"
+                },
+                "category_info": {
+                    "id": "category-uuid-events",
+                    "name": "Events",
+                    "slug": "events"
+                },
+                "user_info": {
+                    "id": "user-uuid-creator",
+                    "first_name": "Alice",
+                    "last_name": "Smith"
+                }
+            }
+        ],
+        "pagination": {
+            "current_page": 1,
+            "page_size": 10,
+            "total_records": 25,
+            "total_pages": 3
+        }
+    }
+    ```
+
+---
+
+### Notifications
+
+All notification endpoints require Bearer Token authentication.
+
+#### GET `/api/v1/notifications`
+
+Fetches a paginated list of notifications for the authenticated user, ordered by creation date (newest first).
+
+-   **Authentication:** Bearer Token (Firebase ID Token)
+-   **Query Parameters:**
+    -   `page` (int, optional, default: 1): The page number.
+    -   `page_size` (int, optional, default: 10): Items per page.
+-   **Successful Response (200 OK):**
+    ```json
+    {
+        "status": "success",
+        "message": "Notifications retrieved successfully.",
+        "data": [
+            {
+                "id": "notification-uuid-1",
+                "user_id": "authenticated-user-uuid",
+                "type": "listing_approved_live",
+                "message": "Great news! Your listing 'My Awesome Event' has been approved and is now live.",
+                "related_listing_id": "listing-uuid-for-event",
+                "is_read": false,
+                "created_at": "2023-10-26T12:00:00Z"
+            },
+            {
+                "id": "notification-uuid-2",
+                "user_id": "authenticated-user-uuid",
+                "type": "listing_created_pending_approval",
+                "message": "Your listing 'New Item for Sale' has been submitted and is pending review.",
+                "related_listing_id": "listing-uuid-for-item",
+                "is_read": true,
+                "created_at": "2023-10-25T10:00:00Z"
+            }
+        ],
+        "pagination": {
+            "current_page": 1,
+            "page_size": 10,
+            "total_records": 5,
+            "total_pages": 1
+        }
+    }
+    ```
+
+#### POST `/api/v1/notifications/{notification_id}/mark-read`
+
+Marks a specific notification as read for the authenticated user. The user must be the owner of the notification.
+
+-   **Authentication:** Bearer Token (Firebase ID Token)
+-   **Path Parameter:**
+    -   `notification_id` (UUID): The ID of the notification to mark as read.
+-   **Request Body:** None
+-   **Successful Response (200 OK):**
+    ```json
+    {
+        "status": "success",
+        "message": "Notification marked as read successfully.",
+        "data": null
+    }
+    ```
+-   **Error Responses:**
+    -   `401 Unauthorized`: If token is missing or invalid.
+    -   `403 Forbidden`: If the notification does not belong to the user.
+    -   `404 Not Found`: If the notification ID does not exist.
+
+#### POST `/api/v1/notifications/mark-all-read`
+
+Marks all unread notifications for the authenticated user as read.
+
+-   **Authentication:** Bearer Token (Firebase ID Token)
+-   **Request Body:** None
+-   **Successful Response (200 OK):**
+    ```json
+    {
+        "status": "success",
+        "message": "All notifications marked as read successfully.",
+        "data": null
+    }
+    ```
+-   **Error Responses:**
+    -   `401 Unauthorized`: If token is missing or invalid.
+
+---
