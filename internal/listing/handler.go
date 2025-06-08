@@ -43,6 +43,7 @@ func (h *Handler) RegisterRoutes(router *gin.RouterGroup, authMW gin.HandlerFunc
 			authedListingGroup.POST("", h.createListing)
 			authedListingGroup.PUT("/:id", h.updateListing)
 			authedListingGroup.DELETE("/:id", h.deleteListing)
+			authedListingGroup.GET("/my-listings", h.getMyListings) // New route for user's own listings
 		}
 
 		adminListingGroup := listingGroup.Group("/admin")
@@ -137,6 +138,41 @@ func (h *Handler) searchListings(c *gin.Context) {
 		// }
 	}
 	common.RespondPaginated(c, "Listings retrieved successfully.", listingResponses, pagination)
+}
+
+func (h *Handler) getMyListings(c *gin.Context) {
+	userID := middleware.GetUserIDFromContext(c)
+	if userID == uuid.Nil {
+		// This should ideally not happen if auth middleware is effective
+		common.RespondWithError(c, common.ErrUnauthorized.WithDetails("User not authenticated."))
+		return
+	}
+
+	var query UserListingsQuery
+	// Bind query parameters like status, category_slug
+	if err := c.ShouldBindQuery(&query); err != nil {
+		h.logger.Warn("Get my listings: Invalid query parameters", zap.Error(err), zap.String("userID", userID.String()))
+		common.RespondWithError(c, common.ErrBadRequest.WithDetails("Invalid query parameters: "+err.Error()))
+		return
+	}
+
+	// Populate pagination parameters
+	query.Page, query.PageSize = common.GetPaginationParams(c)
+
+	listings, pagination, err := h.service.GetUserListings(c.Request.Context(), userID, query)
+	if err != nil {
+		// Service layer is responsible for logging the error details
+		common.RespondWithError(c, err) // Respond with the error passed from the service
+		return
+	}
+
+	listingResponses := make([]ListingResponse, len(listings))
+	for i, l := range listings {
+		// For "my listings", the user is authenticated and is the owner, so they should see full details.
+		listingResponses[i] = ToListingResponse(&l, true)
+	}
+
+	common.RespondPaginated(c, "Successfully retrieved your listings.", listingResponses, pagination)
 }
 
 func (h *Handler) updateListing(c *gin.Context) {

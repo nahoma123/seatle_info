@@ -299,3 +299,9 @@ type ListingSearchQuery struct {
 	SortOrder      string   `form:"sort_order"`
 	IncludeExpired bool     `form:"include_expired"`
 }
+
+type UserListingsQuery struct {
+	common.PaginationQuery
+	Status         *string `form:"status"`
+	CategorySlug *string `form:"category_slug"`
+}
