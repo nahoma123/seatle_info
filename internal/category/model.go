@@ -15,7 +15,7 @@ type Category struct {
 	Slug             string        `gorm:"type:varchar(100);not null;uniqueIndex:idx_categories_slug,unique"`
 	Description      *string       `gorm:"type:text"`
 	SubCategories    []SubCategory `gorm:"foreignKey:CategoryID;constraint:OnDelete:CASCADE;"`
-	SubCategoryCount int           `gorm:"-:all"`
+	SubCategoryCount int           `gorm:"column:sub_category_count;->"` // read-only, no writes
 }
 
 // TableName specifies the table name for the Category model.
@@ -42,13 +42,14 @@ func (SubCategory) TableName() string {
 
 // CategoryResponse defines the structure for category data sent in API responses.
 type CategoryResponse struct {
-	ID            uuid.UUID             `json:"id"`
-	Name          string                `json:"name"`
-	Slug          string                `json:"slug"`
-	Description   *string               `json:"description,omitempty"`
-	SubCategories []SubCategoryResponse `json:"sub_categories,omitempty"`
-	CreatedAt     time.Time             `json:"created_at"`
-	UpdatedAt     time.Time             `json:"updated_at"`
+	ID               uuid.UUID             `json:"id"`
+	Name             string                `json:"name"`
+	Slug             string                `json:"slug"`
+	Description      *string               `json:"description,omitempty"`
+	SubCategoryCount int                   `json:"sub_category_count"`
+	SubCategories    []SubCategoryResponse `json:"sub_categories,omitempty"`
+	CreatedAt        time.Time             `json:"created_at"`
+	UpdatedAt        time.Time             `json:"updated_at"`
 }
 
 // SubCategoryResponse defines the structure for sub_category data.
@@ -69,13 +70,14 @@ func ToCategoryResponse(category *Category) CategoryResponse {
 		subCategoryDTOs[i] = ToSubCategoryResponse(&sc)
 	}
 	return CategoryResponse{
-		ID:            category.ID,
-		Name:          category.Name,
-		Slug:          category.Slug,
-		Description:   category.Description,
-		SubCategories: subCategoryDTOs,
-		CreatedAt:     category.CreatedAt,
-		UpdatedAt:     category.UpdatedAt,
+		ID:               category.ID,
+		Name:             category.Name,
+		Slug:             category.Slug,
+		Description:      category.Description,
+		SubCategoryCount: category.SubCategoryCount,
+		SubCategories:    subCategoryDTOs,
+		CreatedAt:        category.CreatedAt,
+		UpdatedAt:        category.UpdatedAt,
 	}
 }
 

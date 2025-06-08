@@ -90,15 +90,34 @@ func (r *gormRepository) FindCategoryBySlug(ctx context.Context, slug string, pr
 
 func (r *gormRepository) FindAllCategories(ctx context.Context, preloadSubcategories bool) ([]Category, error) {
 	var categories []Category
-	query := r.db.WithContext(ctx).Order("name ASC") // Default sort order
+	query := r.db.WithContext(ctx).Model(&Category{})
+
+	// Define the subquery to count subcategories
+	// 'categories.id' refers to the 'id' column of the 'categories' table in the outer query.
+	// Ensure 'categories.id' matches the actual primary key column name of your categories table,
+	// which is likely `id` if you're using `common.BaseModel` that defines `ID`.
+	subQuery := r.db.Model(&SubCategory{}).
+		Select("count(*)").
+		Where("sub_categories.category_id = categories.id") // Assuming PK of Category is 'id'
+
+	// Select all columns from categories table AND the result of the subquery aliased as sub_category_count
+	// GORM will map 'sub_category_count' to the 'SubCategoryCount' field in the Category struct.
+	query = query.Select("categories.*, (?) as sub_category_count", subQuery)
+
 	if preloadSubcategories {
-		// Preload SubCategories and order them by name as well
 		query = query.Preload("SubCategories", func(db *gorm.DB) *gorm.DB {
+			// Assuming SubCategory has a 'name' field for ordering
 			return db.Order("sub_categories.name ASC")
 		})
 	}
-	err := query.Find(&categories).Error
-	return categories, err
+
+	// Assuming Category has a 'name' field for ordering
+	err := query.Order("categories.name ASC").Find(&categories).Error
+	if err != nil {
+		return nil, err
+	}
+	return categories, nil
+
 }
 
 func (r *gormRepository) UpdateCategory(ctx context.Context, category *Category) error {

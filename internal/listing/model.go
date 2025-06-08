@@ -206,7 +206,9 @@ type UpdateListingRequest struct {
 
 type ListingResponse struct {
 	ID                 uuid.UUID                     `json:"id"`
+	UserID             uuid.UUID                     `json:"user_id"`
 	User               user.UserResponse             `json:"user"`
+	CategoryID         uuid.UUID                     `json:"category_id"`
 	Category           category.CategoryResponse     `json:"category"`
 	SubCategory        *category.SubCategoryResponse `json:"sub_category,omitempty"`
 	Title              string                        `json:"title"`
@@ -245,7 +247,9 @@ func ToListingResponse(listing *Listing, isAuthenticated bool) ListingResponse {
 
 	resp := ListingResponse{
 		ID:                 listing.ID,
+		UserID:             listing.UserID,
 		User:               userResp,
+		CategoryID:         listing.CategoryID,
 		Category:           catResp,
 		SubCategory:        subCatResp,
 		Title:              listing.Title,
