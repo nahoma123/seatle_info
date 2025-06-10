@@ -4,14 +4,14 @@ package listing
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
 
-	"fmt" // Added for notification messages
-	"seattle_info_backend/internal/category" // For category validation
+	"seattle_info_backend/internal/category"
 	"seattle_info_backend/internal/common"
 	"seattle_info_backend/internal/config"
-	"seattle_info_backend/internal/notification" // Add this
-	"seattle_info_backend/internal/user"         // For user details, first post approval status
+	"seattle_info_backend/internal/notification"
+	"seattle_info_backend/internal/user"
 
 	"github.com/google/uuid"
 	"go.uber.org/zap"
@@ -25,24 +25,23 @@ type Service interface {
 	DeleteListing(ctx context.Context, id uuid.UUID, userID uuid.UUID) error
 	SearchListings(ctx context.Context, query ListingSearchQuery, authenticatedUserID *uuid.UUID) ([]Listing, *common.Pagination, error)
 	GetUserListings(ctx context.Context, userID uuid.UUID, query UserListingsQuery) ([]Listing, *common.Pagination, error)
+	GetRecentListings(ctx context.Context, page, pageSize int) ([]ListingResponse, *common.Pagination, error)
+	GetUpcomingEvents(ctx context.Context, page, pageSize int) ([]ListingResponse, *common.Pagination, error)
 
 	// Admin specific
 	AdminUpdateListingStatus(ctx context.Context, id uuid.UUID, status ListingStatus, adminNotes *string) (*Listing, error)
 	AdminApproveListing(ctx context.Context, id uuid.UUID) (*Listing, error)
-	AdminGetListingByID(ctx context.Context, id uuid.UUID) (*Listing, error) // Bypasses some user checks
+	AdminGetListingByID(ctx context.Context, id uuid.UUID) (*Listing, error)
 
 	// Jobs related (can be called by cron jobs)
 	ExpireListings(ctx context.Context) (int, error)
-
-	GetRecentListings(ctx context.Context, page, pageSize int) ([]ListingResponse, *common.Pagination, error)
-	GetUpcomingEvents(ctx context.Context, page, pageSize int) ([]ListingResponse, *common.Pagination, error)
 }
 
 // ServiceImplementation implements the listing Service interface.
 type ServiceImplementation struct {
 	repo                Repository
-	userRepo            user.Repository  // To check user's first post status, etc.
-	categoryService     category.Service // To validate category/subcategory IDs
+	userRepo            user.Repository
+	categoryService     category.Service
 	notificationService notification.Service
 	cfg                 *config.Config
 	logger              *zap.Logger
@@ -69,8 +68,7 @@ func NewService(
 
 // CreateListing handles the business logic for creating a new listing.
 func (s *ServiceImplementation) CreateListing(ctx context.Context, userID uuid.UUID, req CreateListingRequest) (*Listing, error) {
-	// Validate Category and SubCategory
-	cat, err := s.categoryService.GetCategoryByID(ctx, req.CategoryID, true) // Preload subcategories for validation
+	cat, err := s.categoryService.GetCategoryByID(ctx, req.CategoryID, true)
 	if err != nil {
 		s.logger.Warn("Invalid category ID during listing creation", zap.String("categoryID", req.CategoryID.String()), zap.Error(err))
 		return nil, common.ErrBadRequest.WithDetails("Invalid category ID provided.")
@@ -89,16 +87,11 @@ func (s *ServiceImplementation) CreateListing(ctx context.Context, userID uuid.U
 				zap.String("subCategoryID", req.SubCategoryID.String()))
 			return nil, common.ErrBadRequest.WithDetails("Subcategory does not belong to the specified category.")
 		}
-	} else if cat.Name == "Businesses" && (req.SubCategoryID == nil || *req.SubCategoryID == uuid.Nil) { // BR1.2 specific for "Business"
-		// Assuming "Businesses" is the name. Better to use slug or a constant.
-		// If the main category is "Business", a subcategory is mandatory.
+	} else if cat.Name == "Businesses" && (req.SubCategoryID == nil || *req.SubCategoryID == uuid.Nil) {
 		return nil, common.ErrBadRequest.WithDetails("Subcategory is required for 'Business' listings.")
 	}
 
-	// Validate category-specific details based on BR1
-	// E.g., if category is "Baby Sitting", languages_spoken is required in BabysittingDetails (BR1.3)
-	// This logic should be more robust, perhaps using category slugs.
-	switch cat.Slug { // Assuming slugs are 'baby-sitting', 'housing', 'events'
+	switch cat.Slug {
 	case "baby-sitting":
 		if req.BabysittingDetails == nil || len(req.BabysittingDetails.LanguagesSpoken) == 0 {
 			return nil, common.ErrBadRequest.WithDetails("Languages spoken are required for Baby Sitting listings.")
@@ -119,7 +112,6 @@ func (s *ServiceImplementation) CreateListing(ctx context.Context, userID uuid.U
 		}
 	}
 
-	// Handle first post moderation (BR3.3)
 	postingUser, err := s.userRepo.FindByID(ctx, userID)
 	if err != nil {
 		s.logger.Error("User not found when creating listing", zap.String("userID", userID.String()), zap.Error(err))
@@ -127,9 +119,8 @@ func (s *ServiceImplementation) CreateListing(ctx context.Context, userID uuid.U
 	}
 
 	listingStatus := StatusActive
-	isAdminApproved := true // Default to true unless first post moderation applies
+	isAdminApproved := true
 
-	// Check if first-post approval model is active
 	firstPostModelActiveUntil, err := s.getPlatformConfigDate("FIRST_POST_APPROVAL_MODEL_ACTIVE_UNTIL")
 	isFirstPostModelActive := false
 	if err == nil && time.Now().Before(*firstPostModelActiveUntil) {
@@ -139,31 +130,24 @@ func (s *ServiceImplementation) CreateListing(ctx context.Context, userID uuid.U
 	}
 
 	if isFirstPostModelActive && !postingUser.IsFirstPostApproved {
-		// Check if this user has any other posts (approved or pending)
-		// This simplified check counts all posts. A more accurate check might look for *approved* posts.
 		userPostCount, err := s.repo.CountListingsByUserID(ctx, userID)
 		if err != nil {
 			s.logger.Error("Failed to count user listings for first post check", zap.Error(err), zap.String("userID", userID.String()))
 			return nil, common.ErrInternalServer.WithDetails("Could not verify posting eligibility.")
 		}
 
-		if userPostCount == 0 { // This is their absolute first post submission
+		if userPostCount == 0 {
 			listingStatus = StatusPendingApproval
 			isAdminApproved = false
 			s.logger.Info("First post by user, marking for admin approval", zap.String("userID", userID.String()))
 		}
-		// BR3.3: "During this initial 'first post pending approval' phase, the user is restricted to submitting only that single post."
-		// If they already have a post (which must be pending if IsFirstPostApproved is false), they can't post another.
-		if userPostCount > 0 { // This means they have a post, and since IsFirstPostApproved is false, it must be pending.
-			// Or, they might have had a post rejected. A more granular status check on existing posts might be needed.
-			// For now, if IsFirstPostApproved is false and they have any post, block.
+		if userPostCount > 0 {
 			s.logger.Warn("User attempting to submit multiple posts before first approval", zap.String("userID", userID.String()))
 			return nil, common.ErrForbidden.WithDetails("You must wait for your first post to be approved before submitting another.")
 		}
 	}
 
-	// Listing lifespan (BR2.3)
-	lifespanDays := s.cfg.DefaultListingLifespanDays // From .env via config struct
+	lifespanDays := s.cfg.DefaultListingLifespanDays
 	configLifespan, err := s.getPlatformConfigInt("DEFAULT_LISTING_LIFESPAN_DAYS")
 	if err == nil && configLifespan > 0 {
 		lifespanDays = configLifespan
@@ -196,7 +180,6 @@ func (s *ServiceImplementation) CreateListing(ctx context.Context, userID uuid.U
 		newListing.Location = &PostGISPoint{Lat: *req.Latitude, Lon: *req.Longitude}
 	}
 
-	// Populate details
 	if req.BabysittingDetails != nil {
 		newListing.BabysittingDetails = &ListingDetailsBabysitting{
 			LanguagesSpoken: req.BabysittingDetails.LanguagesSpoken,
@@ -210,7 +193,7 @@ func (s *ServiceImplementation) CreateListing(ctx context.Context, userID uuid.U
 		}
 	}
 	if req.EventDetails != nil {
-		eventDate, _ := time.Parse("2006-01-02", req.EventDetails.EventDate) // Validation ensures format
+		eventDate, _ := time.Parse("2006-01-02", req.EventDetails.EventDate)
 		newListing.EventDetails = &ListingDetailsEvents{
 			EventDate:     eventDate,
 			EventTime:     req.EventDetails.EventTime,
@@ -224,12 +207,10 @@ func (s *ServiceImplementation) CreateListing(ctx context.Context, userID uuid.U
 		return nil, err
 	}
 
-	// Important: Reload the created listing with associations for the response
 	createdListing, err := s.repo.FindByID(ctx, newListing.ID, true)
 	if err != nil {
 		s.logger.Error("Failed to reload created listing with associations", zap.String("listingID", newListing.ID.String()), zap.Error(err))
-		// Return the original newListing without full associations if reload fails, or handle error
-		return newListing, nil // Or return error
+		return newListing, nil
 	}
 
 	s.logger.Info("Listing created successfully", zap.String("listingID", createdListing.ID.String()), zap.String("status", string(createdListing.Status)))
@@ -253,7 +234,6 @@ func (s *ServiceImplementation) CreateListing(ctx context.Context, userID uuid.U
 				zap.String("listingID", createdListing.ID.String()),
 				zap.String("userID", createdListing.UserID.String()),
 			)
-			// Do not fail the operation due to notification error
 		}
 	}
 	return createdListing, nil
@@ -261,9 +241,9 @@ func (s *ServiceImplementation) CreateListing(ctx context.Context, userID uuid.U
 
 // GetListingByID retrieves a listing by its ID, handling visibility rules.
 func (s *ServiceImplementation) GetListingByID(ctx context.Context, id uuid.UUID, authenticatedUserID *uuid.UUID) (*Listing, error) {
-	listing, err := s.repo.FindByID(ctx, id, true) // Preload associations
+	listing, err := s.repo.FindByID(ctx, id, true)
 	if err != nil {
-		return nil, err // Repo returns common.ErrNotFound
+		return nil, err
 	}
 
 	if listing.Status == StatusPendingApproval {
@@ -329,7 +309,7 @@ func (s *ServiceImplementation) UpdateListing(ctx context.Context, id uuid.UUID,
 		existingListing.SubCategoryID = req.SubCategoryID
 	} else if req.SubCategoryID == nil && existingListing.SubCategoryID != nil {
 		currentCategory, _ := s.categoryService.GetCategoryByID(ctx, existingListing.CategoryID, false)
-		if currentCategory != nil && currentCategory.Slug == "businesses" {
+		if currentCategory != nil && currentCategory.Slug == "businesses" { // Assuming slug for "Business" is "businesses"
 			return nil, common.ErrBadRequest.WithDetails("Cannot remove subcategory from a 'Business' listing.")
 		}
 		existingListing.SubCategoryID = nil
@@ -383,16 +363,7 @@ func (s *ServiceImplementation) UpdateListing(ctx context.Context, id uuid.UUID,
 		existingListing.Longitude = nil
 	}
 
-<<<<<<< HEAD
-	currentCat, _ := s.categoryService.GetCategoryByID(ctx, existingListing.CategoryID, false)
-	if currentCat != nil {
-		switch currentCat.Slug {
-=======
-	// Update specific details based on the listing's category.
-	// The existingListing.Category should be preloaded by FindByID.
 	if existingListing.Category.Slug == "" {
-		// Attempt to load category if it wasn't preloaded or is missing for some reason.
-		// This is a fallback, ideally Category is always preloaded with the listing.
 		cat, catErr := s.categoryService.GetCategoryByID(ctx, existingListing.CategoryID, false)
 		if catErr != nil {
 			s.logger.Error("Failed to retrieve category for listing update",
@@ -401,19 +372,16 @@ func (s *ServiceImplementation) UpdateListing(ctx context.Context, id uuid.UUID,
 				zap.Error(catErr))
 			return nil, common.ErrInternalServer.WithDetails("Could not verify listing category for update.")
 		}
-		existingListing.Category = *cat // Update the category on the listing
+		existingListing.Category = *cat
 	}
 
-	// Use existingListing.Category.Slug for the switch
 	if existingListing.Category.Slug != "" {
 		switch existingListing.Category.Slug {
->>>>>>> origin/feat/user-listings-management
 		case "baby-sitting":
 			if req.BabysittingDetails != nil {
 				if existingListing.BabysittingDetails == nil {
 					existingListing.BabysittingDetails = &ListingDetailsBabysitting{ListingID: existingListing.ID}
 				}
-				// LanguagesSpoken is a slice, typically replaced entirely if provided.
 				existingListing.BabysittingDetails.LanguagesSpoken = req.BabysittingDetails.LanguagesSpoken
 			}
 		case "housing":
@@ -421,10 +389,7 @@ func (s *ServiceImplementation) UpdateListing(ctx context.Context, id uuid.UUID,
 				if existingListing.HousingDetails == nil {
 					existingListing.HousingDetails = &ListingDetailsHousing{ListingID: existingListing.ID}
 				}
-				// PropertyType is required in CreateListingHousingDetailsRequest,
-				// so if req.HousingDetails is not nil, PropertyType should be valid.
 				existingListing.HousingDetails.PropertyType = req.HousingDetails.PropertyType
-
 				if req.HousingDetails.RentDetails != nil {
 					existingListing.HousingDetails.RentDetails = req.HousingDetails.RentDetails
 				}
@@ -437,23 +402,17 @@ func (s *ServiceImplementation) UpdateListing(ctx context.Context, id uuid.UUID,
 				if existingListing.EventDetails == nil {
 					existingListing.EventDetails = &ListingDetailsEvents{ListingID: existingListing.ID}
 				}
-				// EventDate is required in CreateListingEventDetailsRequest (string "YYYY-MM-DD")
-				// It must be parsed to time.Time for the model.
-				if req.EventDetails.EventDate != "" { // Check if date string is actually provided
+				if req.EventDetails.EventDate != "" {
 					eventDate, errDate := time.Parse("2006-01-02", req.EventDetails.EventDate)
 					if errDate != nil {
 						s.logger.Warn("Invalid event_date format during listing update",
 							zap.String("listingID", id.String()),
 							zap.String("eventDate", req.EventDetails.EventDate),
 							zap.Error(errDate))
-						// Potentially return common.ErrBadRequest here if date format is crucial and invalid
-						// For now, we log and skip updating the date if parsing fails.
-						// Or, rely on validator on request struct. If it's here, it means validator passed.
 					} else {
 						existingListing.EventDetails.EventDate = eventDate
 					}
 				}
-
 				if req.EventDetails.EventTime != nil {
 					existingListing.EventDetails.EventTime = req.EventDetails.EventTime
 				}
@@ -467,15 +426,6 @@ func (s *ServiceImplementation) UpdateListing(ctx context.Context, id uuid.UUID,
 		}
 	}
 
-<<<<<<< HEAD
-=======
-	// Status and IsAdminApproved fields are NOT modified by this user-facing update method.
-	// Those are handled by admin-specific methods like AdminUpdateListingStatus.
-	// If a listing is edited, does it need re-approval?
-	// Business rule: For simplicity, assume edits to active listings don't require re-approval,
-	// unless it was pending, then it remains pending.
-	// If it was rejected, editing might move it to pending again.
->>>>>>> origin/feat/user-listings-management
 	if existingListing.Status == StatusRejected || existingListing.Status == StatusAdminRemoved {
 		// Business logic for re-approval or state change on edit can be added here.
 	}
@@ -529,20 +479,15 @@ func (s *ServiceImplementation) SearchListings(ctx context.Context, query Listin
 	return listings, pagination, nil
 }
 
-<<<<<<< HEAD
-// AdminUpdateListingStatus handles admin updates to a listing's status.
-func (s *ServiceImplementation) AdminUpdateListingStatus(ctx context.Context, id uuid.UUID, newStatus ListingStatus, adminNotes *string) (*Listing, error) {
-	listingBeforeUpdate, err := s.repo.FindByID(ctx, id, true)
-=======
-func (s *service) GetUserListings(ctx context.Context, userID uuid.UUID, query UserListingsQuery) ([]Listing, *common.Pagination, error) {
+// GetUserListings retrieves listings for a specific user.
+func (s *ServiceImplementation) GetUserListings(ctx context.Context, userID uuid.UUID, query UserListingsQuery) ([]Listing, *common.Pagination, error) {
 	listings, pagination, err := s.repo.FindByUserID(ctx, userID, query)
 	if err != nil {
 		s.logger.Error("Failed to get user listings from repository",
 			zap.String("userID", userID.String()),
-			zap.Any("query", query), // Be mindful of logging sensitive query params if any
+			zap.Any("query", query),
 			zap.Error(err),
 		)
-		// Directly return the error from the repository, which should be one of common.Err types or a generic error
 		return nil, nil, err
 	}
 
@@ -553,10 +498,9 @@ func (s *service) GetUserListings(ctx context.Context, userID uuid.UUID, query U
 	return listings, pagination, nil
 }
 
-// --- Admin Methods ---
-func (s *service) AdminUpdateListingStatus(ctx context.Context, id uuid.UUID, status ListingStatus, adminNotes *string) (*Listing, error) {
-	listing, err := s.repo.FindByID(ctx, id, false) // Don't need full preload just for status update
->>>>>>> origin/feat/user-listings-management
+// AdminUpdateListingStatus handles admin updates to a listing's status.
+func (s *ServiceImplementation) AdminUpdateListingStatus(ctx context.Context, id uuid.UUID, newStatus ListingStatus, adminNotes *string) (*Listing, error) {
+	listingBeforeUpdate, err := s.repo.FindByID(ctx, id, true) // Preload associations
 	if err != nil {
 		s.logger.Warn("AdminUpdateListingStatus: Listing not found before update", zap.String("listingID", id.String()), zap.Error(err))
 		return nil, err
@@ -565,39 +509,48 @@ func (s *service) AdminUpdateListingStatus(ctx context.Context, id uuid.UUID, st
 	originalIsAdminApproved := listingBeforeUpdate.IsAdminApproved
 
 	userWasUpdated := false
-	if newStatus == StatusActive && originalStatus == StatusPendingApproval && !listingBeforeUpdate.User.IsFirstPostApproved {
+	if newStatus == StatusActive && originalStatus == StatusPendingApproval && listingBeforeUpdate.User != nil && !listingBeforeUpdate.User.IsFirstPostApproved {
 		postingUser := listingBeforeUpdate.User
-		if !postingUser.IsFirstPostApproved {
-			postingUser.IsFirstPostApproved = true
-			fullUser, userErr := s.userRepo.FindByID(ctx, postingUser.ID)
-			if userErr == nil {
+		// It's safer to fetch the user again to ensure we have the latest state before updating
+		fullUser, userErr := s.userRepo.FindByID(ctx, postingUser.ID)
+		if userErr == nil {
+			if !fullUser.IsFirstPostApproved {
 				fullUser.IsFirstPostApproved = true
 				if updateErr := s.userRepo.Update(ctx, fullUser); updateErr != nil {
-					s.logger.Error("Failed to update user IsFirstPostApproved flag", zap.Error(updateErr), zap.String("userID", postingUser.ID.String()))
+					s.logger.Error("Failed to update user IsFirstPostApproved flag", zap.Error(updateErr), zap.String("userID", fullUser.ID.String()))
 				} else {
-					s.logger.Info("User's first post approved, flag updated", zap.String("userID", postingUser.ID.String()))
+					s.logger.Info("User's first post approved, flag updated", zap.String("userID", fullUser.ID.String()))
 					userWasUpdated = true
 				}
-			} else {
-				s.logger.Error("Failed to find user to update IsFirstPostApproved flag", zap.Error(userErr), zap.String("userID", postingUser.ID.String()))
 			}
+		} else {
+			s.logger.Error("Failed to find user to update IsFirstPostApproved flag", zap.Error(userErr), zap.String("userID", postingUser.ID.String()))
 		}
 	}
 
+	// Update listing status
 	if err := s.repo.UpdateStatus(ctx, id, newStatus, adminNotes); err != nil {
 		s.logger.Error("Failed to admin update listing status in repo", zap.Error(err), zap.String("listingID", id.String()))
 		return nil, err
 	}
 
+	// If status is now Active, ensure IsAdminApproved is true
 	if newStatus == StatusActive {
-		tempListingForApprovalUpdate, findErr := s.repo.FindByID(ctx, id, false)
+		// Fetch the listing again to get the result of UpdateStatus
+		tempListingForApprovalUpdate, findErr := s.repo.FindByID(ctx, id, false) // No need to preload here
 		if findErr == nil {
-			tempListingForApprovalUpdate.IsAdminApproved = true
-			if errUpdate := s.repo.Update(ctx, tempListingForApprovalUpdate); errUpdate != nil {
-				s.logger.Error("Failed to explicitly set IsAdminApproved to true after status update", zap.Error(errUpdate), zap.String("listingID", id.String()))
+			if !tempListingForApprovalUpdate.IsAdminApproved { // Only update if it's not already true
+				tempListingForApprovalUpdate.IsAdminApproved = true
+				// Use a more targeted update for IsAdminApproved rather than full Update.
+				// This might require a specific repo method or careful use of Updates.
+				// For now, using existing Update, but be mindful of its scope.
+				if errUpdate := s.repo.Update(ctx, tempListingForApprovalUpdate); errUpdate != nil {
+					s.logger.Error("Failed to explicitly set IsAdminApproved to true after status update", zap.Error(errUpdate), zap.String("listingID", id.String()))
+				}
 			}
 		}
 	}
+
 
 	updatedListing, err := s.repo.FindByID(ctx, id, true)
 	if err != nil {
@@ -625,6 +578,7 @@ func (s *service) AdminUpdateListingStatus(ctx context.Context, id uuid.UUID, st
 	s.logger.Info("Admin updated listing status", zap.String("listingID", id.String()), zap.String("newStatus", string(newStatus)), zap.Bool("userFirstPostApprovedUpdated", userWasUpdated))
 	return updatedListing, nil
 }
+
 
 // AdminApproveListing approves a listing.
 func (s *ServiceImplementation) AdminApproveListing(ctx context.Context, id uuid.UUID) (*Listing, error) {
