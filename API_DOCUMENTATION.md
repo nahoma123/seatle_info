@@ -268,6 +268,7 @@ Manages listings posted by users.
     }
     ```
 *   **Error Responses**: `400`, `401`, `422`, `500`
+<<<<<<< HEAD
 
 
 ## API Endpoints
@@ -301,11 +302,42 @@ Fetches a paginated list of the most recently created active and approved listin
                 // "contact_email": "jane.doe@example.com",
                 // "contact_phone": "123-456-7890",
                 "address_line1": "123 Main St",
+=======
+```
+
+### `GET /api/v1/listings/my-listings`
+*   **Method & Path:** `GET /api/v1/listings/my-listings`
+*   **Description:** Retrieves a list of all listings created by the authenticated user.
+*   **Authentication:** Required (Bearer Token - Firebase ID Token).
+*   **Query Parameters:**
+    *   `page` (int, optional, default: 1): Page number for pagination.
+    *   `page_size` (int, optional, default: 10): Number of items per page.
+    *   `status` (string, optional): Filter by listing status (e.g., "active", "pending_approval", "expired", "rejected", "admin_removed").
+    *   `category_slug` (string, optional): Filter by category slug (e.g., "events", "housing", "baby-sitting").
+*   **Successful Response (200 OK):**
+    *   The response is a paginated list of listing objects. Each listing object includes full details, including category information, sub-category information (if applicable), and the relevant category-specific details block (e.g., `event_details`, `housing_details`).
+    ```json
+    {
+        "message": "Successfully retrieved your listings.",
+        "data": [
+            {
+                "id": "a1b2c3d4-e5f6-7890-1234-567890abcdef",
+                "user_id": "u1v2w3x4-y5z6-7890-1234-567890qrstuv",
+                "title": "Community Summer Fest",
+                "description": "Annual summer festival with games, food, and music.",
+                "status": "active",
+                "contact_name": "Jane Doe",
+                "contact_email": "jane.doe@example.com",
+                "contact_phone": "555-0101",
+                "address_line1": "123 Main St",
+                "address_line2": "Suite 100",
+>>>>>>> origin/feat/user-listings-management
                 "city": "Seattle",
                 "state": "WA",
                 "zip_code": "98101",
                 "latitude": 47.6062,
                 "longitude": -122.3321,
+<<<<<<< HEAD
                 "category_info": {
                     "id": "category-uuid",
                     "name": "Handmade Goods",
@@ -378,10 +410,41 @@ Fetches a paginated list of upcoming active and approved events, ordered by even
                     "last_name": "Smith"
                 }
             }
+=======
+                "expires_at": "2024-09-01T00:00:00Z",
+                "is_admin_approved": true,
+                "created_at": "2024-03-15T10:00:00Z",
+                "updated_at": "2024-03-15T11:30:00Z",
+                "user": { // User who posted the listing
+                    "id": "u1v2w3x4-y5z6-7890-1234-567890qrstuv",
+                    "first_name": "John",
+                    "last_name": "Doe",
+                    "profile_picture_url": null
+                },
+                "category": { // Main category details
+                    "id": "cat_events_uuid",
+                    "name": "Events",
+                    "slug": "events",
+                    "description": "Community events and gatherings."
+                },
+                "sub_category": null, // or populated sub-category object
+                "event_details": { // Category-specific details
+                    "listing_id": "a1b2c3d4-e5f6-7890-1234-567890abcdef",
+                    "event_date": "2024-07-20T00:00:00Z",
+                    "event_time": "10:00:00",
+                    "organizer_name": "City Events Committee",
+                    "venue_name": "Downtown Park"
+                },
+                "housing_details": null, // Only one detail type will be populated
+                "babysitting_details": null
+            }
+            // ... other listings ...
+>>>>>>> origin/feat/user-listings-management
         ],
         "pagination": {
             "current_page": 1,
             "page_size": 10,
+<<<<<<< HEAD
             "total_records": 25,
             "total_pages": 3
         }
@@ -431,10 +494,14 @@ Fetches a paginated list of notifications for the authenticated user, ordered by
             "current_page": 1,
             "page_size": 10,
             "total_records": 5,
+=======
+            "total_items": 1,
+>>>>>>> origin/feat/user-listings-management
             "total_pages": 1
         }
     }
     ```
+<<<<<<< HEAD
 
 #### POST `/api/v1/notifications/{notification_id}/mark-read`
 
@@ -475,3 +542,78 @@ Marks all unread notifications for the authenticated user as read.
     -   `401 Unauthorized`: If token is missing or invalid.
 
 ---
+=======
+*   **Error Responses:**
+    *   `401 Unauthorized`: If the user is not authenticated.
+    *   `500 Internal Server Error`: For unexpected server issues.
+
+### `PUT /api/v1/listings/{listing_id}`
+*   **Method & Path:** `PUT /api/v1/listings/{listing_id}`
+*   **Description:** Allows an authenticated user to update the details of a listing they own. Fields not provided in the request body will generally remain unchanged (partial update).
+*   **Authentication:** Required (Bearer Token - Firebase ID Token).
+*   **URL Parameters:**
+    *   `listing_id` (UUID, required): The ID of the listing to update.
+*   **Request Body:**
+    *   The request body should be a JSON object containing the fields to update. This can include top-level listing fields and/or category-specific detail fields.
+    *   The category of a listing cannot be changed.
+    *   `status` and `is_admin_approved` fields are not modifiable via this endpoint.
+    *   **Example for an Event Listing Update:**
+        ```json
+        {
+            "title": "Updated Community Summer Fest",
+            "description": "Updated details: Now with more food trucks and live bands!",
+            "contact_phone": "555-0199",
+            "event_details": { // Key based on category (e.g., housing_details, babysitting_details)
+                "event_date": "2024-07-21",   // Date string "YYYY-MM-DD"
+                "event_time": "11:00:00",     // Time string "HH:MM:SS"
+                "venue_name": "Central City Park"
+            }
+        }
+        ```
+    *   **Example for a Housing Listing Update (partial - only rent details):**
+        ```json
+        {
+            "housing_details": {
+                "property_type": "for_rent", // Must match existing or be a valid update based on rules
+                "rent_details": "$2200/month, utilities included"
+            }
+        }
+        ```
+*   **Successful Response (200 OK):**
+    *   Returns the fully updated listing object, similar to the `GET /api/v1/listings/{listing_id}` response structure.
+    ```json
+    {
+        "message": "Listing updated successfully.",
+        "data": {
+            "id": "a1b2c3d4-e5f6-7890-1234-567890abcdef",
+            "user_id": "u1v2w3x4-y5z6-7890-1234-567890qrstuv",
+            "category_id": "cat_events_uuid",
+            "title": "Updated Community Summer Fest",
+            "description": "Updated details: Now with more food trucks and live bands!",
+            "contact_phone": "555-0199",
+            // ... other fields ...
+            "updated_at": "2024-03-15T14:00:00Z", // Note: timestamp reflects update time
+            "user": { /* ... user details ... */ },
+            "category": { /* ... category details for "events" ... */ },
+            "sub_category": null,
+            "event_details": {
+                "listing_id": "a1b2c3d4-e5f6-7890-1234-567890abcdef",
+                "event_date": "2024-07-21T00:00:00Z", // Date part from request, time is zeroed
+                "event_time": "11:00:00",
+                "organizer_name": "City Events Committee", // Unchanged if not in request
+                "venue_name": "Central City Park"
+            },
+            "housing_details": null,
+            "babysitting_details": null
+        }
+    }
+    ```
+*   **Error Responses:**
+    *   `400 Bad Request`: If the `listing_id` is invalid or the request body has general format issues.
+    *   `401 Unauthorized`: If the user is not authenticated.
+    *   `403 Forbidden`: If the authenticated user does not own the listing.
+    *   `404 Not Found`: If the listing with the specified `listing_id` does not exist.
+    *   `422 Unprocessable Entity`: If the request body fails validation (e.g., invalid field values, missing required fields within a details block).
+    *   `500 Internal Server Error`: For unexpected server issues.
+```
+>>>>>>> origin/feat/user-listings-management

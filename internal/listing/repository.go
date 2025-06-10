@@ -27,8 +27,12 @@ type Repository interface {
 	FindExpiredListings(ctx context.Context, now time.Time) ([]Listing, error)
 	CountListingsByUserIDAndStatus(ctx context.Context, userID uuid.UUID, status ListingStatus) (int64, error)
 	CountListingsByUserID(ctx context.Context, userID uuid.UUID) (int64, error)
+<<<<<<< HEAD
 	GetRecentListings(ctx context.Context, page, pageSize int, currentUserID *uuid.UUID) ([]Listing, *common.Pagination, error)
 	GetUpcomingEvents(ctx context.Context, page, pageSize int) ([]Listing, *common.Pagination, error)
+=======
+	FindByUserID(ctx context.Context, userID uuid.UUID, query UserListingsQuery) ([]Listing, *common.Pagination, error)
+>>>>>>> origin/feat/user-listings-management
 }
 
 // GORMRepository implements the listing Repository interface using GORM.
@@ -385,6 +389,7 @@ func (r *GORMRepository) CountListingsByUserID(ctx context.Context, userID uuid.
 	return count, err
 }
 
+<<<<<<< HEAD
 // GetRecentListings retrieves recent, active, non-event listings.
 func (r *GORMRepository) GetRecentListings(ctx context.Context, page, pageSize int, currentUserID *uuid.UUID) ([]Listing, *common.Pagination, error) {
 	var listings []Listing
@@ -502,6 +507,86 @@ func (r *GORMRepository) GetUpcomingEvents(ctx context.Context, page, pageSize i
 
 	if err != nil {
 		return nil, nil, fmt.Errorf("fetching upcoming events failed: %w", err)
+=======
+// FindByUserID retrieves listings for a specific user, with optional filters.
+func (r *gormRepository) FindByUserID(ctx context.Context, userID uuid.UUID, query UserListingsQuery) ([]Listing, *common.Pagination, error) {
+	var listings []Listing
+	var totalItems int64
+
+	dbQuery := r.db.WithContext(ctx).Model(&Listing{})
+	dbQuery = r.preloader(dbQuery) // Apply common preloads
+
+	// Filter by UserID (mandatory)
+	dbQuery = dbQuery.Where("listings.user_id = ?", userID)
+
+	// Optional filter by Status
+	if query.Status != nil && *query.Status != "" {
+		dbQuery = dbQuery.Where("listings.status = ?", *query.Status)
+	}
+
+	// Optional filter by CategorySlug
+	if query.CategorySlug != nil && *query.CategorySlug != "" {
+		dbQuery = dbQuery.Joins("Category").Where("categories.slug = ?", *query.CategorySlug)
+	}
+
+	// --- Count Total Items for Pagination (before applying limit/offset) ---
+	if err := dbQuery.Count(&totalItems).Error; err != nil {
+		return nil, nil, fmt.Errorf("failed to count user listings: %w", err)
+	}
+
+	// --- Apply Sorting ---
+	// Default sort order
+	dbQuery = dbQuery.Order("listings.created_at DESC")
+
+	// --- Apply Pagination ---
+	// Ensure Page and PageSize are set, potentially using common.GetPaginationParams if they can be zero.
+	// For this implementation, we assume UserListingsQuery.PaginationQuery is already populated.
+	// If Page or PageSize could be 0, you might use:
+	// page, pageSize := common.GetPaginationParams(query.Page, query.PageSize)
+	// pagination := common.NewPagination(totalItems, page, pageSize)
+	// For now, directly use query.Page and query.PageSize
+	if query.Page == 0 {
+		query.Page = 1 // Default to page 1
+	}
+	if query.PageSize == 0 {
+		query.PageSize = 10 // Default to 10 items per page
+	}
+	pagination := common.NewPagination(totalItems, query.Page, query.PageSize)
+
+	// Corrected offset calculation: (currentPage - 1) * pageSize
+	dbQuery = dbQuery.Offset((pagination.CurrentPage - 1) * pagination.PageSize).Limit(pagination.PageSize)
+
+	// Handle location data (similar to Search method)
+	// We need to select the location_wkt and parse it, as PostGISPoint is not directly mapped by GORM
+	// This part is crucial if your Listing struct and its usage expect Location to be populated.
+	// If Location is not used or populated elsewhere, this can be simplified.
+	// Assuming Location needs to be populated:
+	dbQuery = dbQuery.
+		Omit("location"). // Omit the geometry type field if it causes issues with direct scan
+		Select("listings.*, ST_AsText(location) AS location_wkt") // Select WKT representation
+
+	if err := dbQuery.Find(&listings).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			// It's not an error if a user has no listings, return empty slice and pagination
+			return []Listing{}, pagination, nil
+		}
+		return nil, nil, fmt.Errorf("failed to find user listings: %w", err)
+	}
+
+	// Populate PostGISPoint from location_wkt
+	for i := range listings {
+		if listings[i].LocationWKT != "" {
+			point, err := parseWKT(listings[i].LocationWKT) // parseWKT is an existing helper
+			if err != nil {
+				// Log or handle error. For now, we'll let the listing have a nil Location.
+				// Consider returning an error or logging more formally in a real application.
+				fmt.Printf("Warning: Failed to parse WKT for listing %s: %v\n", listings[i].ID, err)
+				listings[i].Location = nil // Ensure location is nil if parsing fails
+				continue
+			}
+			listings[i].Location = point
+		}
+>>>>>>> origin/feat/user-listings-management
 	}
 
 	return listings, pagination, nil

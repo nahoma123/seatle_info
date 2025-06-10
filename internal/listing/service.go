@@ -24,6 +24,7 @@ type Service interface {
 	UpdateListing(ctx context.Context, id uuid.UUID, userID uuid.UUID, req UpdateListingRequest) (*Listing, error)
 	DeleteListing(ctx context.Context, id uuid.UUID, userID uuid.UUID) error
 	SearchListings(ctx context.Context, query ListingSearchQuery, authenticatedUserID *uuid.UUID) ([]Listing, *common.Pagination, error)
+	GetUserListings(ctx context.Context, userID uuid.UUID, query UserListingsQuery) ([]Listing, *common.Pagination, error)
 
 	// Admin specific
 	AdminUpdateListingStatus(ctx context.Context, id uuid.UUID, status ListingStatus, adminNotes *string) (*Listing, error)
@@ -382,39 +383,99 @@ func (s *ServiceImplementation) UpdateListing(ctx context.Context, id uuid.UUID,
 		existingListing.Longitude = nil
 	}
 
+<<<<<<< HEAD
 	currentCat, _ := s.categoryService.GetCategoryByID(ctx, existingListing.CategoryID, false)
 	if currentCat != nil {
 		switch currentCat.Slug {
+=======
+	// Update specific details based on the listing's category.
+	// The existingListing.Category should be preloaded by FindByID.
+	if existingListing.Category.Slug == "" {
+		// Attempt to load category if it wasn't preloaded or is missing for some reason.
+		// This is a fallback, ideally Category is always preloaded with the listing.
+		cat, catErr := s.categoryService.GetCategoryByID(ctx, existingListing.CategoryID, false)
+		if catErr != nil {
+			s.logger.Error("Failed to retrieve category for listing update",
+				zap.String("listingID", id.String()),
+				zap.String("categoryID", existingListing.CategoryID.String()),
+				zap.Error(catErr))
+			return nil, common.ErrInternalServer.WithDetails("Could not verify listing category for update.")
+		}
+		existingListing.Category = *cat // Update the category on the listing
+	}
+
+	// Use existingListing.Category.Slug for the switch
+	if existingListing.Category.Slug != "" {
+		switch existingListing.Category.Slug {
+>>>>>>> origin/feat/user-listings-management
 		case "baby-sitting":
 			if req.BabysittingDetails != nil {
 				if existingListing.BabysittingDetails == nil {
-					existingListing.BabysittingDetails = &ListingDetailsBabysitting{}
+					existingListing.BabysittingDetails = &ListingDetailsBabysitting{ListingID: existingListing.ID}
 				}
+				// LanguagesSpoken is a slice, typically replaced entirely if provided.
 				existingListing.BabysittingDetails.LanguagesSpoken = req.BabysittingDetails.LanguagesSpoken
 			}
 		case "housing":
 			if req.HousingDetails != nil {
 				if existingListing.HousingDetails == nil {
-					existingListing.HousingDetails = &ListingDetailsHousing{}
+					existingListing.HousingDetails = &ListingDetailsHousing{ListingID: existingListing.ID}
 				}
+				// PropertyType is required in CreateListingHousingDetailsRequest,
+				// so if req.HousingDetails is not nil, PropertyType should be valid.
 				existingListing.HousingDetails.PropertyType = req.HousingDetails.PropertyType
-				existingListing.HousingDetails.RentDetails = req.HousingDetails.RentDetails
-				existingListing.HousingDetails.SalePrice = req.HousingDetails.SalePrice
+
+				if req.HousingDetails.RentDetails != nil {
+					existingListing.HousingDetails.RentDetails = req.HousingDetails.RentDetails
+				}
+				if req.HousingDetails.SalePrice != nil {
+					existingListing.HousingDetails.SalePrice = req.HousingDetails.SalePrice
+				}
 			}
 		case "events":
 			if req.EventDetails != nil {
 				if existingListing.EventDetails == nil {
-					existingListing.EventDetails = &ListingDetailsEvents{}
+					existingListing.EventDetails = &ListingDetailsEvents{ListingID: existingListing.ID}
 				}
-				eventDate, _ := time.Parse("2006-01-02", req.EventDetails.EventDate)
-				existingListing.EventDetails.EventDate = eventDate
-				existingListing.EventDetails.EventTime = req.EventDetails.EventTime
-				existingListing.EventDetails.OrganizerName = req.EventDetails.OrganizerName
-				existingListing.EventDetails.VenueName = req.EventDetails.VenueName
+				// EventDate is required in CreateListingEventDetailsRequest (string "YYYY-MM-DD")
+				// It must be parsed to time.Time for the model.
+				if req.EventDetails.EventDate != "" { // Check if date string is actually provided
+					eventDate, errDate := time.Parse("2006-01-02", req.EventDetails.EventDate)
+					if errDate != nil {
+						s.logger.Warn("Invalid event_date format during listing update",
+							zap.String("listingID", id.String()),
+							zap.String("eventDate", req.EventDetails.EventDate),
+							zap.Error(errDate))
+						// Potentially return common.ErrBadRequest here if date format is crucial and invalid
+						// For now, we log and skip updating the date if parsing fails.
+						// Or, rely on validator on request struct. If it's here, it means validator passed.
+					} else {
+						existingListing.EventDetails.EventDate = eventDate
+					}
+				}
+
+				if req.EventDetails.EventTime != nil {
+					existingListing.EventDetails.EventTime = req.EventDetails.EventTime
+				}
+				if req.EventDetails.OrganizerName != nil {
+					existingListing.EventDetails.OrganizerName = req.EventDetails.OrganizerName
+				}
+				if req.EventDetails.VenueName != nil {
+					existingListing.EventDetails.VenueName = req.EventDetails.VenueName
+				}
 			}
 		}
 	}
 
+<<<<<<< HEAD
+=======
+	// Status and IsAdminApproved fields are NOT modified by this user-facing update method.
+	// Those are handled by admin-specific methods like AdminUpdateListingStatus.
+	// If a listing is edited, does it need re-approval?
+	// Business rule: For simplicity, assume edits to active listings don't require re-approval,
+	// unless it was pending, then it remains pending.
+	// If it was rejected, editing might move it to pending again.
+>>>>>>> origin/feat/user-listings-management
 	if existingListing.Status == StatusRejected || existingListing.Status == StatusAdminRemoved {
 		// Business logic for re-approval or state change on edit can be added here.
 	}
@@ -468,9 +529,34 @@ func (s *ServiceImplementation) SearchListings(ctx context.Context, query Listin
 	return listings, pagination, nil
 }
 
+<<<<<<< HEAD
 // AdminUpdateListingStatus handles admin updates to a listing's status.
 func (s *ServiceImplementation) AdminUpdateListingStatus(ctx context.Context, id uuid.UUID, newStatus ListingStatus, adminNotes *string) (*Listing, error) {
 	listingBeforeUpdate, err := s.repo.FindByID(ctx, id, true)
+=======
+func (s *service) GetUserListings(ctx context.Context, userID uuid.UUID, query UserListingsQuery) ([]Listing, *common.Pagination, error) {
+	listings, pagination, err := s.repo.FindByUserID(ctx, userID, query)
+	if err != nil {
+		s.logger.Error("Failed to get user listings from repository",
+			zap.String("userID", userID.String()),
+			zap.Any("query", query), // Be mindful of logging sensitive query params if any
+			zap.Error(err),
+		)
+		// Directly return the error from the repository, which should be one of common.Err types or a generic error
+		return nil, nil, err
+	}
+
+	s.logger.Debug("Successfully retrieved user listings",
+		zap.String("userID", userID.String()),
+		zap.Int("count", len(listings)),
+	)
+	return listings, pagination, nil
+}
+
+// --- Admin Methods ---
+func (s *service) AdminUpdateListingStatus(ctx context.Context, id uuid.UUID, status ListingStatus, adminNotes *string) (*Listing, error) {
+	listing, err := s.repo.FindByID(ctx, id, false) // Don't need full preload just for status update
+>>>>>>> origin/feat/user-listings-management
 	if err != nil {
 		s.logger.Warn("AdminUpdateListingStatus: Listing not found before update", zap.String("listingID", id.String()), zap.Error(err))
 		return nil, err
