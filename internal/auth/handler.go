@@ -32,7 +32,7 @@ func NewHandler(
 
 // RegisterRoutes sets up the routes for authentication operations.
 func (h *Handler) RegisterRoutes(router *gin.RouterGroup) {
-	authGroup := router.Group("/auth")
+	authGroup := router.Group("/")
 	{
 		authGroup.GET("/me", h.me)
 		// Middleware is applied in server.go where this router group is passed
