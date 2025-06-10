@@ -74,7 +74,7 @@ const (
 type Listing struct {
 	common.BaseModel
 	UserID        uuid.UUID             `gorm:"type:uuid;not null"`
-	User          user.User             `gorm:"foreignKey:UserID;references:ID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;"`
+	User          *user.User            `gorm:"foreignKey:UserID;references:ID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;"`
 	CategoryID    uuid.UUID             `gorm:"type:uuid;not null"`
 	Category      category.Category     `gorm:"foreignKey:CategoryID;references:ID;constraint:OnUpdate:CASCADE,OnDelete:RESTRICT;"`
 	SubCategoryID *uuid.UUID            `gorm:"type:uuid"`
@@ -236,8 +236,8 @@ type ListingResponse struct {
 }
 
 func ToListingResponse(listing *Listing, isAuthenticated bool) ListingResponse {
-	sharedUser := user.DBToShared(&listing.User) // Convert GORM user.User to shared.User
-	userResp := user.ToUserResponse(sharedUser)  // Pass shared.User to ToUserResponse
+	sharedUser := user.DBToShared(listing.User) // Convert GORM user.User to shared.User
+	userResp := user.ToUserResponse(sharedUser) // Pass shared.User to ToUserResponse
 	catResp := category.ToCategoryResponse(&listing.Category)
 	var subCatResp *category.SubCategoryResponse
 	if listing.SubCategory != nil {
@@ -302,6 +302,6 @@ type ListingSearchQuery struct {
 
 type UserListingsQuery struct {
 	common.PaginationQuery
-	Status         *string `form:"status"`
+	Status       *string `form:"status"`
 	CategorySlug *string `form:"category_slug"`
 }

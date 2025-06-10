@@ -393,38 +393,71 @@ func (r *GORMRepository) GetRecentListings(ctx context.Context, page, pageSize i
 	var total int64
 
 	// Base query for recent listings
-	query := r.db.WithContext(ctx).Model(&Listing{}).
+	baseQuery := r.db.WithContext(ctx).Model(&Listing{}).
 		Joins("JOIN categories ON categories.id = listings.category_id").
 		Where("categories.slug != ?", "events"). // Exclude events
 		Where("listings.status = ?", StatusActive).
 		Where("listings.is_admin_approved = ?", true).
 		Where("listings.expires_at > ?", time.Now())
 
+	// Note: currentUserID is passed but not used in the original query.
+	// If it's meant to filter or modify behavior, that logic would be added here or to baseQuery.
+	// For example:
+	// if currentUserID != nil {
+	//     baseQuery = baseQuery.Where("listings.user_id != ?", *currentUserID) // Example: exclude user's own listings
+	// }
+
 	// Count total records that match the criteria for pagination
-	countQuery := query // Create a new query object for count to avoid issues with Order, Limit, Offset
-	if err := countQuery.Count(&total).Error; err != nil {
+	countQuerySession := baseQuery // Create a new query object for count
+	if err := countQuerySession.Count(&total).Error; err != nil {
 		return nil, nil, fmt.Errorf("counting recent listings failed: %w", err)
 	}
 
 	pagination := common.NewPagination(total, page, pageSize)
 	offset := (page - 1) * pageSize
-	if page <= 0 {
+	if page <= 0 { // Or pagination.CurrentPage <= 0
 		offset = 0
 	}
+	if pageSize <= 0 { // Default pageSize if not provided or invalid
+		pageSize = 10 // Or use pagination.PageSize
+	}
 
-	err := query.Order("listings.created_at DESC").
-		Limit(pageSize).
+	// Main data query - apply location trick here
+	dataQuerySession := baseQuery // Start from the same base conditions
+	err := dataQuerySession.
+		Order("listings.created_at DESC").
+		Limit(pageSize). // Use the potentially adjusted pageSize
 		Offset(offset).
 		Preload("User").
 		Preload("Category").
 		Preload("SubCategory").
 		Preload("BabysittingDetails").
 		Preload("HousingDetails").
+		// Apply the location trick
+		Omit("location").                                                   // Tell GORM to skip trying to scan the 'location' column directly
+		Select("listings.*, ST_AsText(listings.location) AS location_wkt"). // Select WKT into LocationWKT
 		Find(&listings).Error
 
 	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) { // Handle case where no records are found gracefully
+			return []Listing{}, pagination, nil
+		}
 		return nil, nil, fmt.Errorf("fetching recent listings failed: %w", err)
 	}
+
+	// Post-fetch processing to parse WKT
+	for i := range listings {
+		if listings[i].LocationWKT != "" {
+			point, err := parseWKT(listings[i].LocationWKT)
+			if err != nil {
+				fmt.Printf("Warning: Failed to parse WKT for recent listing %s: %v\n", listings[i].ID, err)
+				listings[i].Location = nil
+				continue
+			}
+			listings[i].Location = point
+		}
+	}
+
 	return listings, pagination, nil
 }
 
@@ -434,49 +467,76 @@ func (r *GORMRepository) GetUpcomingEvents(ctx context.Context, page, pageSize i
 	var total int64
 
 	now := time.Now()
+	// It's generally better to use the time.Time object directly with GORM
+	// for date/time comparisons if your database column types support it (e.g., TIMESTAMP, DATE, TIME).
+	// GORM and most drivers handle the formatting.
+	// However, your original query uses formatted strings, so I'll stick to that pattern
+	// but be aware that direct time.Time objects are often cleaner.
 	currentDate := now.Format("2006-01-02")
 	currentTime := now.Format("15:04:05")
 
-	query := r.db.WithContext(ctx).Model(&Listing{}).
+	// Base query (without select modifications yet for count)
+	baseQuery := r.db.WithContext(ctx).Model(&Listing{}).
 		Joins("JOIN categories ON categories.id = listings.category_id").
 		Joins("JOIN listing_details_events ON listing_details_events.listing_id = listings.id").
 		Where("categories.slug = ?", "events").
 		Where("listings.status = ?", StatusActive).
 		Where("listings.is_admin_approved = ?", true).
-		Where("listings.expires_at > ?", now).
+		Where("listings.expires_at > ?", now). // Use 'now' directly
 		Where("(listing_details_events.event_date > ?) OR (listing_details_events.event_date = ? AND (listing_details_events.event_time IS NULL OR listing_details_events.event_time >= ?))", currentDate, currentDate, currentTime)
 
-	countQuery := r.db.WithContext(ctx).Model(&Listing{}).
-		Joins("JOIN categories ON categories.id = listings.category_id").
-		Joins("JOIN listing_details_events ON listing_details_events.listing_id = listings.id").
-		Where("categories.slug = ?", "events").
-		Where("listings.status = ?", StatusActive).
-		Where("listings.is_admin_approved = ?", true).
-		Where("listings.expires_at > ?", now).
-		Where("(listing_details_events.event_date > ?) OR (listing_details_events.event_date = ? AND (listing_details_events.event_time IS NULL OR listing_details_events.event_time >= ?))", currentDate, currentDate, currentTime)
-
-	if err := countQuery.Count(&total).Error; err != nil {
+	// Count total records
+	// Create a new GORM session from baseQuery for counting to avoid interference
+	countQuerySession := baseQuery
+	if err := countQuerySession.Count(&total).Error; err != nil {
 		return nil, nil, fmt.Errorf("counting upcoming events failed: %w", err)
 	}
 
 	pagination := common.NewPagination(total, page, pageSize)
 	offset := (page - 1) * pageSize
-	if page <= 0 {
+	if page <= 0 { // Or pagination.CurrentPage <= 0
 		offset = 0
 	}
+	if pageSize <= 0 { // Default pageSize if not provided or invalid
+		pageSize = 10 // Or use pagination.PageSize
+	}
 
-	err := query.Order("listing_details_events.event_date ASC, listing_details_events.event_time ASC").
-		Limit(pageSize).
+	// Main data query - apply location trick here
+	dataQuerySession := baseQuery // Start from the same base conditions
+	err := dataQuerySession.
+		Order("listing_details_events.event_date ASC, listing_details_events.event_time ASC").
+		Limit(pageSize). // Use the potentially adjusted pageSize
 		Offset(offset).
 		Preload("User").
 		Preload("Category").
 		Preload("SubCategory").
 		Preload("EventDetails").
+		// Apply the location trick
+		Omit("location").                                                   // Tell GORM to skip trying to scan the 'location' column directly
+		Select("listings.*, ST_AsText(listings.location) AS location_wkt"). // Select WKT into LocationWKT
 		Find(&listings).Error
 
 	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) { // Handle case where no records are found gracefully
+			return []Listing{}, pagination, nil
+		}
 		return nil, nil, fmt.Errorf("fetching upcoming events failed: %w", err)
 	}
+
+	// Post-fetch processing to parse WKT
+	for i := range listings {
+		if listings[i].LocationWKT != "" {
+			point, err := parseWKT(listings[i].LocationWKT)
+			if err != nil {
+				// Log the error, decide if you want to skip this listing or return an error
+				fmt.Printf("Warning: Failed to parse WKT for upcoming event listing %s: %v\n", listings[i].ID, err)
+				listings[i].Location = nil // Ensure location is nil if parsing fails
+				continue
+			}
+			listings[i].Location = point
+		}
+	}
+
 	return listings, pagination, nil
 }
 
