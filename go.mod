@@ -19,7 +19,7 @@ require (
 	golang.org/x/crypto v0.38.0 // indirect
 	golang.org/x/oauth2 v0.30.0 // indirect; ADDED: For Google OAuth2 and JWT for Apple
 	gorm.io/driver/postgres v1.5.3
-	gorm.io/gorm v1.25.5
+	gorm.io/gorm v1.30.0
 )
 
 require (
@@ -27,6 +27,7 @@ require (
 	github.com/gin-contrib/cors v1.7.5
 	github.com/stretchr/testify v1.10.0
 	google.golang.org/api v0.235.0
+	gorm.io/driver/sqlite v1.6.0
 )
 
 require (
@@ -79,6 +80,7 @@ require (
 	github.com/leodido/go-urn v1.4.0 // indirect
 	github.com/magiconair/properties v1.8.7 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
+	github.com/mattn/go-sqlite3 v1.14.22 // indirect
 	github.com/mitchellh/mapstructure v1.5.0 // indirect
 	github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd // indirect
 	github.com/modern-go/reflect2 v1.0.2 // indirect

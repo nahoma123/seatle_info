@@ -175,8 +175,9 @@ func (s *ServiceImplementation) GetOrCreateUserFromFirebaseClaims(ctx context.Co
 
 		// Store the original Firebase sign-in provider (e.g., "google.com", "password")
 		if firebaseInfo, ok := firebaseToken.Claims["firebase"].(map[string]interface{}); ok {
-			if signInProvider, ok := firebaseInfo["sign_in_provider"].(string); ok {
-				dbNewUser.ProviderID = &signInProvider
+			// Now signInProvider is not needed, so we can use the blank identifier _
+			if _, ok := firebaseInfo["sign_in_provider"].(string); ok {
+				// dbNewUser.ProviderID = &signInProvider // Intentionally commented out as per requirements
 			}
 		}
 
