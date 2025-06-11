@@ -92,8 +92,8 @@ type Listing struct {
 	ZipCode       *string               `gorm:"type:varchar(20)"`
 	Latitude      *float64              `gorm:"type:decimal(10,8)"`
 	Longitude     *float64              `gorm:"type:decimal(11,8)"`
-	Location      *PostGISPoint         `gorm:"-"`
-	LocationWKT   string                `gorm:"column:location_wkt"`
+	Location      *PostGISPoint         `gorm:"type:geography(Point,4326);column:location"`
+	LocationWKT   string                `gorm:"-"`
 
 	ExpiresAt          time.Time                  `gorm:"not null"`
 	IsAdminApproved    bool                       `gorm:"not null;default:false"`

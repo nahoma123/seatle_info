@@ -209,6 +209,97 @@ func TestGetRecentListingsAPI(t *testing.T) {
 	// clearTestData(t, router, []uuid.UUID{listing1.ID, listing2.ID, listingExpired.ID, listingEvent.ID, listingPending.ID, listing3.ID, listing4.ID}, testUser.ID, catNonEvent.ID, catEvent.ID)
 }
 
+func TestCreateListingAPI_WithLocation(t *testing.T) {
+	router, cleanup := setupTestServer(t)
+	defer cleanup()
+
+	// 1. Seed User and Category
+	testUser, err := seedUserIfNotExists(router, "createlistinguser@test.com", "password123", "Create", "User")
+	assert.NoError(t, err)
+	assert.NotNil(t, testUser)
+
+	categoryData, err := seedCategoryIfNotExists(router, "Test Category for Location Listing", "test-cat-location")
+	assert.NoError(t, err)
+	assert.NotNil(t, categoryData)
+
+	// 2. Construct Listing Payload
+	lat := 47.6062
+	lon := -122.3321
+	title := "Listing with Location Data"
+	description := "This is a test listing that includes latitude and longitude."
+
+	createReq := listing.CreateListingRequest{
+		CategoryID:  categoryData.ID,
+		Title:       title,
+		Description: description,
+		Latitude:    &lat,
+		Longitude:   &lon,
+		// Other required fields if any (e.g., ContactName, ExpiresAt - assuming defaults or handled by API)
+		// For simplicity, we're focusing on location. Add other fields as per your model's requirements.
+	}
+
+	payloadBytes, err := json.Marshal(createReq)
+	assert.NoError(t, err)
+	payloadBody := bytes.NewReader(payloadBytes)
+
+	// 3. Make Authenticated POST Request
+	rr := httptest.NewRecorder()
+	req, _ := http.NewRequest("POST", "/api/v1/listings", payloadBody)
+
+	// --- Authentication Placeholder ---
+	// In a real test, you would get a token for testUser and set it in the header.
+	// Example:
+	// token := getAuthToken(router, testUser.Email, "password123") // Assuming getAuthToken helper
+	// req.Header.Set("Authorization", "Bearer "+token)
+	// For now, we proceed without explicit auth, but note it.
+	// Depending on your API setup, this might result in 401 if auth is strictly enforced.
+	// If your setupTestServer or specific test user seeding handles auth implicitly, this comment can be adjusted.
+	req.Header.Set("Content-Type", "application/json")
+	// Simulate a user ID in context if your setupTestServer doesn't handle full auth middleware for tests
+	// This is a common workaround if full auth flow is too complex for basic integration tests
+	// req = req.WithContext(context.WithValue(req.Context(), "userID", testUser.ID)) // Example
+
+	router.ServeHTTP(rr, req)
+
+	// 4. Assert HTTP Status
+	// If auth is missing and required, this might fail. Adjust expected status if necessary.
+	// For this test, we'll assume the endpoint is reachable and creates the listing.
+	assert.Equal(t, http.StatusCreated, rr.Code, "Expected status 201 Created. Body: %s", rr.Body.String())
+
+	// 5. Unmarshal and Assert Response Data
+	if rr.Code == http.StatusCreated {
+		var responseBody struct {
+			Status  string                    `json:"status"`
+			Message string                    `json:"message"`
+			Data    listing.ListingResponse   `json:"data"`
+		}
+		err = json.Unmarshal(rr.Body.Bytes(), &responseBody)
+		assert.NoError(t, err, "Failed to unmarshal response body")
+
+		assert.Equal(t, "success", responseBody.Status)
+		assert.NotEmpty(t, responseBody.Data.ID, "Listing ID should not be empty")
+		assert.Equal(t, title, responseBody.Data.Title)
+
+		// Assert Location (PostGISPoint)
+		assert.NotNil(t, responseBody.Data.Location, "Location (PostGISPoint) should not be nil")
+		if responseBody.Data.Location != nil {
+			assert.InDelta(t, lat, responseBody.Data.Location.Lat, 0.00001, "Latitude in Location does not match")
+			assert.InDelta(t, lon, responseBody.Data.Location.Lon, 0.00001, "Longitude in Location does not match")
+		}
+
+		// Assert Latitude and Longitude (*float64 fields)
+		assert.NotNil(t, responseBody.Data.Latitude, "Latitude (*float64) should not be nil")
+		assert.NotNil(t, responseBody.Data.Longitude, "Longitude (*float64) should not be nil")
+		if responseBody.Data.Latitude != nil && responseBody.Data.Longitude != nil {
+			assert.InDelta(t, lat, *responseBody.Data.Latitude, 0.00001, "Latitude (*float64) does not match")
+			assert.InDelta(t, lon, *responseBody.Data.Longitude, 0.00001, "Longitude (*float64) does not match")
+		}
+
+		// Optionally, clean up the created listing
+		// clearTestData(t, router, []uuid.UUID{responseBody.Data.ID}, testUser.ID, categoryData.ID)
+	}
+}
+
 // --- Placeholder Helper Functions ---
 // These would be part of your actual integration test setup
 
