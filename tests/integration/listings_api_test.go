@@ -295,6 +295,55 @@ func TestCreateListingAPI_WithLocation(t *testing.T) {
 			assert.InDelta(t, lon, *responseBody.Data.Longitude, 0.00001, "Longitude (*float64) does not match")
 		}
 
+		// --- Start: Extend test to verify read path ---
+		createdListingID := responseBody.Data.ID
+		assert.NotEmpty(t, createdListingID, "Created listing ID should not be empty for GET request")
+
+		// 6. Make GET request to retrieve the created listing
+		getReqRecorder := httptest.NewRecorder()
+		getReqURL := fmt.Sprintf("/api/v1/listings/%s", createdListingID.String())
+		getReq, errGet := http.NewRequest("GET", getReqURL, nil)
+		assert.NoError(t, errGet, "Error creating GET request")
+
+		// Add auth header if necessary, similar to POST. Assuming placeholder user implies auth for GET by ID.
+		// getReq.Header.Set("Authorization", "Bearer "+token) // Placeholder for actual token
+		router.ServeHTTP(getReqRecorder, getReq)
+
+		// 7. Assert HTTP Status for GET request
+		assert.Equal(t, http.StatusOK, getReqRecorder.Code, "Expected status 200 OK for GET request. Body: %s", getReqRecorder.Body.String())
+
+		// 8. Unmarshal and Assert Response Data for GET request
+		if getReqRecorder.Code == http.StatusOK {
+			var getResponseBody struct {
+				Status  string                  `json:"status"`
+				Message string                  `json:"message"`
+				Data    listing.ListingResponse `json:"data"`
+			}
+			err = json.Unmarshal(getReqRecorder.Body.Bytes(), &getResponseBody)
+			assert.NoError(t, err, "Failed to unmarshal GET response body")
+
+			assert.Equal(t, "success", getResponseBody.Status)
+			retrievedListing := getResponseBody.Data
+			assert.Equal(t, createdListingID, retrievedListing.ID, "Retrieved listing ID does not match created ID")
+			assert.Equal(t, title, retrievedListing.Title, "Retrieved listing title does not match") // Verify other basic data too
+
+			// Assert Location (PostGISPoint) for retrieved listing
+			assert.NotNil(t, retrievedListing.Location, "Retrieved Location (PostGISPoint) should not be nil")
+			if retrievedListing.Location != nil {
+				assert.InDelta(t, lat, retrievedListing.Location.Lat, 0.00001, "Retrieved Latitude in Location does not match")
+				assert.InDelta(t, lon, retrievedListing.Location.Lon, 0.00001, "Retrieved Longitude in Location does not match")
+			}
+
+			// Assert Latitude and Longitude (*float64 fields) for retrieved listing
+			assert.NotNil(t, retrievedListing.Latitude, "Retrieved Latitude (*float64) should not be nil")
+			assert.NotNil(t, retrievedListing.Longitude, "Retrieved Longitude (*float64) should not be nil")
+			if retrievedListing.Latitude != nil && retrievedListing.Longitude != nil {
+				assert.InDelta(t, lat, *retrievedListing.Latitude, 0.00001, "Retrieved Latitude (*float64) does not match")
+				assert.InDelta(t, lon, *retrievedListing.Longitude, 0.00001, "Retrieved Longitude (*float64) does not match")
+			}
+		}
+		// --- End: Extend test to verify read path ---
+
 		// Optionally, clean up the created listing
 		// clearTestData(t, router, []uuid.UUID{responseBody.Data.ID}, testUser.ID, categoryData.ID)
 	}
