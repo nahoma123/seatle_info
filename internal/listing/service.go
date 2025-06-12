@@ -11,11 +11,82 @@ import (
 	"seattle_info_backend/internal/common"
 	"seattle_info_backend/internal/config"
 	"seattle_info_backend/internal/notification"
+	platformElasticsearch "seattle_info_backend/internal/platform/elasticsearch" // Re-add for ESClientWrapper
 	"seattle_info_backend/internal/user"
 
+	"encoding/json" // Added for marshalling
+	"strings"       // Added for strings.NewReader
+
+	"github.com/elastic/go-elasticsearch/v8/esapi" // Added for esapi.IndexRequest etc.
 	"github.com/google/uuid"
 	"go.uber.org/zap"
 )
+
+// listingToElasticsearchDoc converts a Listing model to its Elasticsearch document representation.
+func listingToElasticsearchDoc(listing *Listing) (string, error) {
+	if listing == nil {
+		return "", errors.New("listing cannot be nil")
+	}
+
+	doc := map[string]interface{}{
+		"title":             listing.Title,
+		"description":       listing.Description,
+		"category_id":       listing.CategoryID.String(),
+		"user_id":           listing.UserID.String(),
+		"status":            string(listing.Status),
+		"expires_at":        listing.ExpiresAt,
+		"created_at":        listing.CreatedAt,
+		"updated_at":        listing.UpdatedAt,
+		"is_admin_approved": listing.IsAdminApproved,
+		"contact_name":      listing.ContactName,
+		"city":              listing.City,
+		"state":             listing.State,
+		"zip_code":          listing.ZipCode,
+		"address_line1":     listing.AddressLine1,
+	}
+
+	if listing.SubCategoryID != nil && *listing.SubCategoryID != uuid.Nil {
+		doc["sub_category_id"] = listing.SubCategoryID.String()
+	} else {
+		doc["sub_category_id"] = nil // Explicitly set to null if not present
+	}
+
+	if listing.Latitude != nil && listing.Longitude != nil {
+		doc["location"] = map[string]float64{
+			"lat": *listing.Latitude,
+			"lon": *listing.Longitude,
+		}
+	} else {
+		doc["location"] = nil // Explicitly set to null if not present
+	}
+
+	// Specific details based on category (if available and loaded)
+	// These fields should match the index mapping
+	if listing.BabysittingDetails != nil {
+		doc["languages_spoken"] = listing.BabysittingDetails.LanguagesSpoken
+	}
+	if listing.HousingDetails != nil {
+		doc["property_type"] = listing.HousingDetails.PropertyType
+		if listing.HousingDetails.RentDetails != nil {
+			doc["rent_details"] = *listing.HousingDetails.RentDetails
+		}
+		if listing.HousingDetails.SalePrice != nil {
+			doc["sale_price"] = *listing.HousingDetails.SalePrice
+		}
+	}
+	if listing.EventDetails != nil {
+		doc["event_date"] = listing.EventDetails.EventDate.Format("2006-01-02") // Ensure date format consistency
+		doc["event_time"] = listing.EventDetails.EventTime
+		doc["organizer_name"] = listing.EventDetails.OrganizerName
+		doc["venue_name"] = listing.EventDetails.VenueName
+	}
+
+	docBytes, err := json.Marshal(doc)
+	if err != nil {
+		return "", fmt.Errorf("error marshalling listing to JSON for ES: %w", err)
+	}
+	return string(docBytes), nil
+}
 
 // Service defines the interface for listing-related business logic.
 type Service interface {
@@ -45,6 +116,7 @@ type ServiceImplementation struct {
 	notificationService notification.Service
 	cfg                 *config.Config
 	logger              *zap.Logger
+	esClient            *platformElasticsearch.ESClientWrapper // Re-add field
 }
 
 // NewService creates a new listing service.
@@ -55,6 +127,7 @@ func NewService(
 	notificationService notification.Service,
 	cfg *config.Config,
 	logger *zap.Logger,
+	esClient *platformElasticsearch.ESClientWrapper, // Re-add param
 ) Service {
 	return &ServiceImplementation{
 		repo:                repo,
@@ -63,11 +136,18 @@ func NewService(
 		notificationService: notificationService,
 		cfg:                 cfg,
 		logger:              logger,
+		esClient:            esClient, // Re-add assignment
 	}
 }
 
 // CreateListing handles the business logic for creating a new listing.
 func (s *ServiceImplementation) CreateListing(ctx context.Context, userID uuid.UUID, req CreateListingRequest) (*Listing, error) {
+	// Ensure ES client is available before proceeding with DB operations if indexing is critical path.
+	// For eventual consistency, we can proceed and log ES errors.
+	if s.esClient == nil || s.esClient.Client == nil {
+		s.logger.Warn("Elasticsearch client not available, will not index new listing")
+	}
+
 	cat, err := s.categoryService.GetCategoryByID(ctx, req.CategoryID, true)
 	if err != nil {
 		s.logger.Warn("Invalid category ID during listing creation", zap.String("categoryID", req.CategoryID.String()), zap.Error(err))
@@ -236,6 +316,43 @@ func (s *ServiceImplementation) CreateListing(ctx context.Context, userID uuid.U
 			)
 		}
 	}
+
+	// Index to Elasticsearch
+	if s.esClient != nil && s.esClient.Client != nil && createdListing != nil {
+		docJSON, errDoc := listingToElasticsearchDoc(createdListing)
+		if errDoc != nil {
+			s.logger.Error("Failed to convert listing to Elasticsearch document for CreateListing",
+				zap.String("listingID", createdListing.ID.String()),
+				zap.Error(errDoc),
+			)
+			// Don't return error, just log. DB transaction succeeded.
+		} else {
+			req := esapi.IndexRequest{
+				Index:      platformElasticsearch.ListingsIndexName,
+				DocumentID: createdListing.ID.String(),
+				Body:       strings.NewReader(docJSON),
+				Refresh:    "true", // Or "wait_for" or "false"
+			}
+			res, errIdx := req.Do(context.Background(), s.esClient.Client)
+			if errIdx != nil {
+				s.logger.Error("Failed to index listing in Elasticsearch for CreateListing",
+					zap.String("listingID", createdListing.ID.String()),
+					zap.Error(errIdx),
+				)
+			} else {
+				defer res.Body.Close()
+				if res.IsError() {
+					s.logger.Error("Failed to index listing in Elasticsearch, response error for CreateListing",
+						zap.String("listingID", createdListing.ID.String()),
+						zap.String("status", res.Status()),
+					)
+				} else {
+					s.logger.Info("Successfully indexed new listing in Elasticsearch", zap.String("listingID", createdListing.ID.String()))
+				}
+			}
+		}
+	}
+
 	return createdListing, nil
 }
 
@@ -442,40 +559,312 @@ func (s *ServiceImplementation) UpdateListing(ctx context.Context, id uuid.UUID,
 	}
 
 	s.logger.Info("Listing updated successfully", zap.String("listingID", updatedListing.ID.String()))
+
+	// Update Elasticsearch index
+	if s.esClient != nil && s.esClient.Client != nil && updatedListing != nil {
+		docJSON, errDoc := listingToElasticsearchDoc(updatedListing)
+		if errDoc != nil {
+			s.logger.Error("Failed to convert listing to Elasticsearch document for UpdateListing",
+				zap.String("listingID", updatedListing.ID.String()),
+				zap.Error(errDoc),
+			)
+		} else {
+			req := esapi.IndexRequest{
+				Index:      platformElasticsearch.ListingsIndexName,
+				DocumentID: updatedListing.ID.String(),
+				Body:       strings.NewReader(docJSON),
+				Refresh:    "true",
+			}
+			res, errIdx := req.Do(context.Background(), s.esClient.Client)
+			if errIdx != nil {
+				s.logger.Error("Failed to update listing in Elasticsearch for UpdateListing",
+					zap.String("listingID", updatedListing.ID.String()),
+					zap.Error(errIdx),
+				)
+			} else {
+				defer res.Body.Close()
+				if res.IsError() {
+					s.logger.Error("Failed to update listing in Elasticsearch, response error for UpdateListing",
+						zap.String("listingID", updatedListing.ID.String()),
+						zap.String("status", res.Status()),
+					)
+				} else {
+					s.logger.Info("Successfully updated listing in Elasticsearch", zap.String("listingID", updatedListing.ID.String()))
+				}
+			}
+		}
+	}
 	return updatedListing, nil
 }
 
 // DeleteListing handles deleting a listing.
 func (s *ServiceImplementation) DeleteListing(ctx context.Context, id uuid.UUID, userID uuid.UUID) error {
+	// Check if ES client is available before proceeding with DB operations if indexing is critical.
+	// For eventual consistency, we can proceed and log ES errors.
+	if s.esClient == nil || s.esClient.Client == nil {
+		s.logger.Warn("Elasticsearch client not available, will not attempt to delete listing from index")
+	}
+
 	if err := s.repo.Delete(ctx, id, userID); err != nil {
-		s.logger.Error("Failed to delete listing", zap.Error(err), zap.String("listingID", id.String()), zap.String("userID", userID.String()))
+		s.logger.Error("Failed to delete listing from database", zap.Error(err), zap.String("listingID", id.String()), zap.String("userID", userID.String()))
 		return err
 	}
-	s.logger.Info("Listing deleted successfully", zap.String("listingID", id.String()), zap.String("userID", userID.String()))
+	s.logger.Info("Listing deleted successfully from database", zap.String("listingID", id.String()), zap.String("userID", userID.String()))
+
+	// Delete from Elasticsearch
+	if s.esClient != nil && s.esClient.Client != nil {
+		req := esapi.DeleteRequest{
+			Index:      platformElasticsearch.ListingsIndexName,
+			DocumentID: id.String(),
+			Refresh:    "true",
+		}
+		res, errIdx := req.Do(context.Background(), s.esClient.Client)
+		if errIdx != nil {
+			s.logger.Error("Failed to delete listing from Elasticsearch for DeleteListing",
+				zap.String("listingID", id.String()),
+				zap.Error(errIdx),
+			)
+			// Do not return error, DB deletion was successful.
+		} else {
+			defer res.Body.Close()
+			if res.IsError() && res.StatusCode != 404 { // 404 means already deleted or never existed, which is fine.
+				s.logger.Error("Failed to delete listing from Elasticsearch, response error for DeleteListing",
+					zap.String("listingID", id.String()),
+					zap.String("status", res.Status()),
+				)
+			} else if res.StatusCode == 404 {
+				s.logger.Info("Listing not found in Elasticsearch for deletion (or already deleted)", zap.String("listingID", id.String()))
+			} else {
+				s.logger.Info("Successfully deleted listing from Elasticsearch", zap.String("listingID", id.String()))
+			}
+		}
+	}
 	return nil
 }
 
-// SearchListings performs a search for listings based on various criteria.
-func (s *ServiceImplementation) SearchListings(ctx context.Context, query ListingSearchQuery, authenticatedUserID *uuid.UUID) ([]Listing, *common.Pagination, error) {
-	if query.MaxDistanceKM == nil {
-		maxDistConfig, err := s.getPlatformConfigInt("MAX_LISTING_DISTANCE_KM")
-		if err == nil && maxDistConfig > 0 {
-			floatMaxDist := float64(maxDistConfig)
-			query.MaxDistanceKM = &floatMaxDist
-		} else if err != nil {
-			s.logger.Warn("Could not parse MAX_LISTING_DISTANCE_KM, not applying default distance filter", zap.Error(err))
+// SearchListings performs a search for listings based on various criteria using Elasticsearch.
+func (s *ServiceImplementation) SearchListings(ctx context.Context, queryParams ListingSearchQuery, authenticatedUserID *uuid.UUID) ([]Listing, *common.Pagination, error) {
+	if s.esClient == nil || s.esClient.Client == nil {
+		s.logger.Warn("Elasticsearch client not available, falling back to DB search for SearchListings")
+		// Fallback to original DB search if ES is not available.
+		// This part of the original function can be extracted or duplicated if needed.
+		// For this refactoring, we'll assume ES is primary. If it must fallback, that's an extra step.
+		// return s.searchListingsDB(ctx, queryParams, authenticatedUserID)
+		return nil, nil, common.ErrServiceUnavailable.WithDetails("Search service temporarily unavailable.")
+	}
+
+	esQuery := map[string]interface{}{}
+	boolQuery := map[string]interface{}{}
+	mustClauses := []map[string]interface{}{}
+	filterClauses := []map[string]interface{}{}
+
+	// Text Search (`q`)
+	if queryParams.SearchTerm != nil && *queryParams.SearchTerm != "" {
+		mustClauses = append(mustClauses, map[string]interface{}{
+			"multi_match": map[string]interface{}{
+				"query":  *queryParams.SearchTerm,
+				"fields": []string{"title", "description", "contact_name", "address_line1"}, // Add more searchable fields
+			},
+		})
+	}
+
+	// Filters
+	if queryParams.CategoryID != nil && *queryParams.CategoryID != uuid.Nil {
+		filterClauses = append(filterClauses, map[string]interface{}{
+			"term": map[string]interface{}{"category_id": queryParams.CategoryID.String()},
+		})
+	}
+	if queryParams.SubCategoryID != nil && *queryParams.SubCategoryID != uuid.Nil {
+		filterClauses = append(filterClauses, map[string]interface{}{
+			"term": map[string]interface{}{"sub_category_id": queryParams.SubCategoryID.String()},
+		})
+	}
+	if queryParams.UserID != nil && *queryParams.UserID != uuid.Nil {
+		filterClauses = append(filterClauses, map[string]interface{}{
+			"term": map[string]interface{}{"user_id": queryParams.UserID.String()},
+		})
+	}
+
+	// Status and Expiry
+	if queryParams.Status != "" {
+		filterClauses = append(filterClauses, map[string]interface{}{
+			"term": map[string]interface{}{"status": string(queryParams.Status)},
+		})
+	} else {
+		// Default: only active, non-expired listings unless IncludeExpired is true
+		if !queryParams.IncludeExpired {
+			filterClauses = append(filterClauses, map[string]interface{}{
+				"terms": map[string]interface{}{"status": []string{string(StatusActive)}}, // Only active if not specified
+			})
+			filterClauses = append(filterClauses, map[string]interface{}{
+				"range": map[string]interface{}{
+					"expires_at": map[string]interface{}{"gt": "now/m"}, // Use date math, round to the minute
+				},
+			})
 		}
 	}
-
-	if query.Latitude != nil && query.Longitude != nil && query.SortBy == "" {
-		query.SortBy = "distance"
+	// is_admin_approved filter (typically true for public searches)
+	if queryParams.IsAdminApproved != nil {
+		filterClauses = append(filterClauses, map[string]interface{}{
+			"term": map[string]interface{}{"is_admin_approved": *queryParams.IsAdminApproved},
+		})
+	} else {
+		// Default to only showing admin-approved listings for public searches
+		filterClauses = append(filterClauses, map[string]interface{}{
+			"term": map[string]interface{}{"is_admin_approved": true},
+		})
 	}
 
-	listings, pagination, err := s.repo.Search(ctx, query)
+
+	// Geo Search
+	if queryParams.Latitude != nil && queryParams.Longitude != nil && queryParams.MaxDistanceKM != nil && *queryParams.MaxDistanceKM > 0 {
+		filterClauses = append(filterClauses, map[string]interface{}{
+			"geo_distance": map[string]interface{}{
+				"distance": fmt.Sprintf("%fkm", *queryParams.MaxDistanceKM),
+				"location": map[string]float64{
+					"lat": *queryParams.Latitude,
+					"lon": *queryParams.Longitude,
+				},
+			},
+		})
+	}
+
+	if len(mustClauses) > 0 {
+		boolQuery["must"] = mustClauses
+	}
+	if len(filterClauses) > 0 {
+		boolQuery["filter"] = filterClauses
+	}
+	esQuery["query"] = map[string]interface{}{"bool": boolQuery}
+
+	// Sorting
+	var sorters []map[string]interface{}
+	sortOrder := "asc"
+	if queryParams.SortOrder != "" {
+		sortOrder = strings.ToLower(queryParams.SortOrder)
+	}
+
+	if queryParams.SortBy == "distance" && queryParams.Latitude != nil && queryParams.Longitude != nil {
+		sorters = append(sorters, map[string]interface{}{
+			"_geo_distance": map[string]interface{}{
+				"location": map[string]interface{}{
+					"lat": *queryParams.Latitude,
+					"lon": *queryParams.Longitude,
+				},
+				"order":         sortOrder,
+				"unit":          "km",
+				"distance_type": "arc", // More accurate
+			},
+		})
+	} else if queryParams.SortBy != "" {
+		// Map API sort fields to ES fields if necessary
+		esSortField := queryParams.SortBy
+		if esSortField == "created_at" || esSortField == "expires_at" { // Example, add others if needed
+			// Default order for date fields often 'desc'
+			if queryParams.SortOrder == "" { // if user didn't specify order
+				sortOrder = "desc"
+			}
+		}
+		sorters = append(sorters, map[string]interface{}{
+			esSortField: map[string]interface{}{"order": sortOrder},
+		})
+	} else {
+		// Default sort: by score if there's a text query, otherwise by creation date
+		if queryParams.SearchTerm != nil && *queryParams.SearchTerm != "" {
+			// default is _score desc
+		} else {
+			sorters = append(sorters, map[string]interface{}{
+				"created_at": map[string]interface{}{"order": "desc"},
+			})
+		}
+	}
+	if len(sorters) > 0 {
+		esQuery["sort"] = sorters
+	}
+
+	// Pagination
+	from := (queryParams.Page - 1) * queryParams.PageSize
+	esQuery["from"] = from
+	esQuery["size"] = queryParams.PageSize
+
+	// Execute Search
+	queryJSON, err := json.Marshal(esQuery)
 	if err != nil {
-		s.logger.Error("Failed to search listings", zap.Error(err))
-		return nil, nil, common.ErrInternalServer.WithDetails("Could not retrieve listings.")
+		s.logger.Error("Failed to marshal Elasticsearch query", zap.Error(err), zap.Any("query", esQuery))
+		return nil, nil, common.ErrInternalServer.WithDetails("Error building search query.")
 	}
+	s.logger.Debug("Elasticsearch query", zap.String("query", string(queryJSON)))
+
+	esRes, err := s.esClient.Client.Search(
+		s.esClient.Client.Search.WithContext(ctx),
+		s.esClient.Client.Search.WithIndex(platformElasticsearch.ListingsIndexName),
+		s.esClient.Client.Search.WithBody(strings.NewReader(string(queryJSON))),
+		s.esClient.Client.Search.WithTrackTotalHits(true),
+		s.esClient.Client.Search.WithErrorTrace(s.cfg.GinMode == "debug"), // Enable error trace for debug
+	)
+	if err != nil {
+		s.logger.Error("Error executing Elasticsearch search", zap.Error(err))
+		return nil, nil, common.ErrInternalServer.WithDetails("Error executing search.")
+	}
+	defer esRes.Body.Close()
+
+	if esRes.IsError() {
+		var errBody map[string]interface{}
+		if json.NewDecoder(esRes.Body).Decode(&errBody) == nil {
+			s.logger.Error("Elasticsearch search returned error", zap.String("status", esRes.Status()), zap.Any("error_body", errBody))
+		} else {
+			s.logger.Error("Elasticsearch search returned error, could not parse body", zap.String("status", esRes.Status()))
+		}
+		return nil, nil, common.ErrInternalServer.WithDetails("Search operation failed.")
+	}
+
+	// Process Results
+	var esSearchResults struct {
+		Hits struct {
+			Total struct {
+				Value int `json:"value"`
+			} `json:"total"`
+			Hits []struct {
+				ID     string          `json:"_id"`
+				Source json.RawMessage `json:"_source"` // Use RawMessage to defer parsing
+				Sort   []interface{}   `json:"sort,omitempty"`
+			} `json:"hits"`
+		} `json:"hits"`
+	}
+
+	if err := json.NewDecoder(esRes.Body).Decode(&esSearchResults); err != nil {
+		s.logger.Error("Failed to decode Elasticsearch search results", zap.Error(err))
+		return nil, nil, common.ErrInternalServer.WithDetails("Error processing search results.")
+	}
+
+	listings := make([]Listing, 0, len(esSearchResults.Hits.Hits))
+	for _, hit := range esSearchResults.Hits.Hits {
+		var listing Listing
+		// Attempt to unmarshal _source into the Listing struct
+		// This assumes listingToElasticsearchDoc indexed fields compatible with the Listing struct
+		if err := json.Unmarshal(hit.Source, &listing); err != nil {
+			s.logger.Error("Failed to unmarshal listing from ES _source", zap.String("listingID", hit.ID), zap.Error(err))
+			continue // Skip this problematic document
+		}
+		listing.ID, _ = uuid.Parse(hit.ID) // _id is the UUID
+
+		// TODO: Populate Listing.Distance if geo_sort was applied (from hit.Sort)
+		// TODO: Populate Category, SubCategory, User by fetching from DB if not fully denormalized in ES
+		// For now, these will be zero/nil as they are not directly in _source as complex types.
+		// This highlights the decision point between Option A and Option B.
+		// For a true Listing object, we'd need to hydrate these associations.
+		// If ListingResponse is the target, ensure all ListingResponse fields are in _source.
+
+		listings = append(listings, listing)
+	}
+
+	pagination := &common.Pagination{
+		CurrentPage: queryParams.Page,
+		PageSize:    queryParams.PageSize,
+		TotalItems:  esSearchResults.Hits.Total.Value,
+		TotalPages:  (esSearchResults.Hits.Total.Value + queryParams.PageSize - 1) / queryParams.PageSize,
+	}
+
 	return listings, pagination, nil
 }
 

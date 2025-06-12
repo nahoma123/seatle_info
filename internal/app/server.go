@@ -17,6 +17,7 @@ import (
 	"seattle_info_backend/internal/listing"
 	"seattle_info_backend/internal/middleware"
 	"seattle_info_backend/internal/notification" // Add this
+	platformElasticsearch "seattle_info_backend/internal/platform/elasticsearch" // Added for ESClient
 	"seattle_info_backend/internal/shared"
 	"seattle_info_backend/internal/user"
 
@@ -31,7 +32,10 @@ type Server struct {
 	httpServer *http.Server
 	router     *gin.Engine
 	cfg        *config.Config
-	logger     *zap.Logger
+	logger     *zap.Logger // This is the existing one, maybe rename for clarity or keep if it's the main app logger
+	AppLogger  *zap.Logger // Explicitly for general app logging, returned by initializeServer
+	ESClient   *platformElasticsearch.ESClientWrapper // Added for Elasticsearch client
+
 	// firebaseService *firebase.FirebaseService // Stored if needed by other methods
 	// userService shared.Service // Stored if needed by other methods
 
@@ -63,6 +67,11 @@ func NewServer(
 	db *gorm.DB, // Added db *gorm.DB
 	firebaseService *firebase.FirebaseService,
 	userService shared.Service,
+	esClient *platformElasticsearch.ESClientWrapper, // Added
+	// We already have a logger param, NewServer should use the one passed for its own operations.
+	// If the goal is to make the logger from initializeServer accessible globally via Server struct,
+	// then we might need to rename one of them or decide which one to store.
+	// Assuming `logger` param to NewServer IS the main app logger from initializeServer.
 ) (*Server, error) {
 	gin.SetMode(cfg.GinMode)
 	router := gin.New()
@@ -141,6 +150,8 @@ func NewServer(
 		listingExpiryJob:    listingExpiryJob,
 		authMW:              authMW,
 		adminRoleMW:         adminRoleMW,
+		ESClient:            esClient,  // Store ES Client
+		AppLogger:           logger,    // Store the logger passed (which is the main app logger)
 		// firebaseService: firebaseService, // Store if needed elsewhere
 		// userService: userService,
 	}, nil

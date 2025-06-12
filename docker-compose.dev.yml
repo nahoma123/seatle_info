@@ -53,6 +53,22 @@ services:
     environment:
       - DB_SOURCE=${DB_SOURCE}
 
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.12.2
+    container_name: seattle_info_elasticsearch_dev
+    environment:
+      - discovery.type=single-node
+      - ES_JAVA_OPTS=-Xms512m -Xmx512m
+      - xpack.security.enabled=false
+    ports:
+      - "9200:9200"
+      - "9300:9300"
+    networks:
+      - seattle_info_net_dev
+    volumes:
+      - es_data_dev:/usr/share/elasticsearch/data
+    restart: unless-stopped
+
   # Go application service (optional for now, can be run locally)
   # If you want to run the Go app in Docker during development:
   # app:
@@ -87,6 +103,8 @@ volumes:
   postgres_data_dev:
     driver: local
   pgadmin_data_dev:
+    driver: local
+  es_data_dev: # Added volume for Elasticsearch
     driver: local
 
 networks:

@@ -47,6 +47,9 @@ type Config struct {
 	// Firebase Configuration
 	FirebaseServiceAccountKeyPath string `mapstructure:"FIREBASE_SERVICE_ACCOUNT_KEY_PATH"`
 	FirebaseProjectID             string `mapstructure:"FIREBASE_PROJECT_ID"`
+
+	// Elasticsearch Configuration
+	ElasticsearchURL string `mapstructure:"ELASTICSEARCH_URL"`
 }
 
 // Load attempts to load configuration from a .env file (if present) and environment variables.
@@ -88,6 +91,9 @@ func Load() (*Config, error) {
 	// Firebase
 	v.SetDefault("FIREBASE_PROJECT_ID", "") // Optional
 	v.SetDefault("FIREBASE_SERVICE_ACCOUNT_KEY_PATH", "")
+
+	// Elasticsearch
+	v.SetDefault("ELASTICSEARCH_URL", "http://localhost:9200")
 
 	v.AutomaticEnv()
 	// Optional: v.SetConfigName("config"); v.AddConfigPath("."); v.ReadInConfig()

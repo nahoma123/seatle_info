@@ -7,6 +7,7 @@
 package main
 
 import (
+	elasticsearch2 "github.com/elastic/go-elasticsearch/v8"
 	"go.uber.org/zap"
 	"gorm.io/gorm"
 	"log"
@@ -19,6 +20,7 @@ import (
 	"seattle_info_backend/internal/listing"
 	"seattle_info_backend/internal/notification"
 	"seattle_info_backend/internal/platform/database"
+	"seattle_info_backend/internal/platform/elasticsearch"
 	"seattle_info_backend/internal/platform/logger"
 	"seattle_info_backend/internal/user"
 )
@@ -26,6 +28,7 @@ import (
 // Injectors from wire.go:
 
 // initializeServer is the main Wire injector.
+// Signature reverted to (*app.Server, func(), error) as ESClient & Logger are now in Server struct
 func initializeServer(cfg *config.Config) (*app.Server, func(), error) {
 	zapLogger, err := logger.New(cfg)
 	if err != nil {
@@ -45,7 +48,11 @@ func initializeServer(cfg *config.Config) (*app.Server, func(), error) {
 	listingRepository := listing.NewGORMRepository(db)
 	notificationRepository := notification.NewGORMRepository(db)
 	notificationService := notification.NewService(notificationRepository, zapLogger)
-	listingService := listing.NewService(listingRepository, repository, service, notificationService, cfg, zapLogger)
+	esClientWrapper, err := elasticsearch.NewClient(cfg, zapLogger)
+	if err != nil {
+		return nil, nil, err
+	}
+	listingService := listing.NewService(listingRepository, repository, service, notificationService, cfg, zapLogger, esClientWrapper)
 	listingHandler := listing.NewHandler(listingService, zapLogger)
 	notificationHandler := notification.NewHandler(notificationService, zapLogger)
 	listingExpiryJob := jobs.NewListingExpiryJob(listingService, zapLogger, cfg)
@@ -53,7 +60,7 @@ func initializeServer(cfg *config.Config) (*app.Server, func(), error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	server, err := app.NewServer(cfg, zapLogger, handler, authHandler, categoryHandler, listingHandler, notificationHandler, listingExpiryJob, db, firebaseService, serviceImplementation)
+	server, err := app.NewServer(cfg, zapLogger, handler, authHandler, categoryHandler, listingHandler, notificationHandler, listingExpiryJob, db, firebaseService, serviceImplementation, esClientWrapper)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -63,6 +70,13 @@ func initializeServer(cfg *config.Config) (*app.Server, func(), error) {
 
 // wire.go:
 
+// Dummy variables
+var _ *elasticsearch.ESClientWrapper
+
+var _ *elasticsearch2.Client
+
+// provideCleanup is defined but NOT included in wire.Build above.
+// Wire will generate its own cleanup function.
 func provideCleanup(logger2 *zap.Logger, db *gorm.DB) func() {
 	return func() {
 		logger2.

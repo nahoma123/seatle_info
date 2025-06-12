@@ -15,22 +15,30 @@ import (
 	"seattle_info_backend/internal/listing"
 	"seattle_info_backend/internal/notification" // Add this
 	"seattle_info_backend/internal/platform/database"
+	platformElasticsearch "seattle_info_backend/internal/platform/elasticsearch" // Re-add
 	"seattle_info_backend/internal/platform/logger"
 	"seattle_info_backend/internal/shared"
 	"seattle_info_backend/internal/user"
 
+	elasticsearchbase "github.com/elastic/go-elasticsearch/v8" // Re-add with alias
 	"github.com/google/wire"
 	"go.uber.org/zap"
 	"gorm.io/gorm"
 )
 
+// Dummy variables
+var _ *platformElasticsearch.ESClientWrapper
+var _ *elasticsearchbase.Client
+
 // initializeServer is the main Wire injector.
+// Signature reverted to (*app.Server, func(), error) as ESClient & Logger are now in Server struct
 func initializeServer(cfg *config.Config) (*app.Server, func(), error) {
 	wire.Build(
 		// Platform Layer
-		logger.New,
+		logger.New, // Stays, needed by app.NewServer (and other services)
 		database.NewGORM,
-		// provideCleanup, // This should be fine
+		platformElasticsearch.NewClient, // Re-add
+		// provideCleanup is NOT in Build; Wire aggregates cleanup.
 
 		// Firebase Service (New)
 		firebase.NewFirebaseService,
@@ -74,11 +82,13 @@ func initializeServer(cfg *config.Config) (*app.Server, func(), error) {
 		jobs.NewListingExpiryJob,
 
 		// Application Layer
-		app.NewServer, // app.NewServer now needs notification.Handler
+		app.NewServer, // app.NewServer now needs ESClient and Logger
 	)
-	return nil, nil, nil
+	return nil, nil, nil // Match new signature (3 returns)
 }
 
+// provideCleanup is defined but NOT included in wire.Build above.
+// Wire will generate its own cleanup function.
 func provideCleanup(logger *zap.Logger, db *gorm.DB) func() {
 	return func() {
 		logger.Info("Executing cleanup tasks...")

@@ -18,8 +18,10 @@ import (
 	"seattle_info_backend/internal/listing"
 	"seattle_info_backend/internal/middleware"
 	"seattle_info_backend/internal/user"
-	"seattle_info_backend/pkg/database" // Assuming a package for DB setup
-	"seattle_info_backend/pkg/logging"  // Assuming a package for logger setup
+	"seattle_info_backend/internal/platform/elasticsearch" // Added for ES client
+	"seattle_info_backend/pkg/database"                    // Assuming a package for DB setup
+	"seattle_info_backend/pkg/logging"                     // Assuming a package for logger setup
+	"go.uber.org/zap"                                      // Added for logger
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -38,79 +40,99 @@ type IntegrationTestSuite struct {
 	CatRepo    category.Repository
 	ListingRepo listing.Repository
 	AuthService auth.TokenService
+	ESClient   *elasticsearch.ESClientWrapper // Added ES Client
+	Logger     *zap.Logger                    // Added Logger
+	ListingService listing.Service             // Added Listing Service
 	// Add other necessary services/repos
 }
 
 // SetupSuite runs once before all tests in the suite.
 func (s *IntegrationTestSuite) SetupSuite() {
-	// 0. Initialize Logger (using a test-friendly logger)
-	logger := logging.NewLogger("test", "console", "debug") // Or your actual logger init
+	// 0. Initialize Logger
+	s.Logger = logging.NewLogger("test", "console", "debug") // Store logger in suite
 
-	// 1. Load Configuration (consider a test-specific config if needed)
-	cfg, err := config.LoadConfig("../../configs", "config.test.yaml") // Adjust path and name
-	if err != nil {
-		logger.Fatal("Failed to load test config", zap.Error(err))
-	}
+	// 1. Load Configuration
+	cfg, err := config.LoadConfig("../../configs", "config.test.yaml")
+	s.Require().NoError(err, "Failed to load test config")
 	s.Cfg = cfg
 
-	// 2. Initialize Database
-	db, err := database.InitDB(&cfg.Database)
-	if err != nil {
-		logger.Fatal("Failed to initialize test database", zap.Error(err))
+	// Override ES URL if needed for test environment, e.g., from an env var for test
+	// For now, assume cfg.ElasticsearchURL is correctly set for the test ES instance
+	if s.Cfg.ElasticsearchURL == "" {
+		s.Logger.Warn("ElasticsearchURL is not set in test config, ES tests might fail or be skipped")
+		// s.T().Skip("Skipping tests requiring Elasticsearch as ELASTICSEARCH_URL is not set.")
 	}
-	s.DB = db
-	// Run migrations (if you have them as a separate step)
-	// database.Migrate(db) // Example
 
-	// 3. Initialize Repositories
+
+	// 2. Initialize Database
+	db, err := database.InitDB(&s.Cfg.Database) // Use s.Cfg
+	s.Require().NoError(err, "Failed to initialize test database")
+	s.DB = db
+	// database.Migrate(db) // If applicable
+
+	// 3. Initialize Elasticsearch Client
+	if s.Cfg.ElasticsearchURL != "" {
+		esClient, esErr := elasticsearch.NewClient(s.Cfg, s.Logger)
+		s.Require().NoError(esErr, "Failed to initialize Elasticsearch client")
+		s.ESClient = esClient
+
+		// Create Listings Index
+		err = elasticsearch.CreateListingsIndexIfNotExists(s.ESClient, s.Logger)
+		s.Require().NoError(err, "Failed to create listings index")
+	}
+
+
+	// 4. Initialize Repositories
 	s.UserRepo = user.NewGORMRepository(s.DB)
 	s.CatRepo = category.NewGORMRepository(s.DB)
 	s.ListingRepo = listing.NewGORMRepository(s.DB)
 
-	// 4. Initialize Services
-	s.AuthService = auth.NewTokenService(s.Cfg.Auth.JWTSecret, s.Cfg.Auth.TokenExpiryMinutes, s.UserRepo, logger)
-	catService := category.NewService(s.CatRepo, logger)
-	listingService := listing.NewService(s.ListingRepo, s.UserRepo, catService, s.Cfg, logger)
+	// 5. Initialize Services
+	s.AuthService = auth.NewTokenService(s.Cfg.Auth.JWTSecret, s.Cfg.Auth.TokenExpiryMinutes, s.UserRepo, s.Logger)
+	catService := category.NewService(s.CatRepo, s.Logger, s.Cfg) // Pass Cfg if NewService requires it
+	s.ListingService = listing.NewService(s.ListingRepo, s.UserRepo, catService, nil, s.Cfg, s.Logger, s.ESClient) // Pass ESClient, updated signature for notificationService
 
-	// 5. Initialize Gin Engine and Routes
-	s.Router = gin.New() // Or gin.Default() if you want default middlewares
-	s.Router.Use(logging.GinMiddleware(logger)) // Add logging middleware
-	s.Router.Use(gin.Recovery())                // Add recovery middleware
+	// 6. Initialize Gin Engine and Routes
+	s.Router = gin.New()
+	s.Router.Use(logging.GinMiddleware(s.Logger))
+	s.Router.Use(gin.Recovery())
 
 	// Setup middleware
-	authMiddleware := middleware.AuthMiddleware(s.AuthService, logger)
-	adminRoleMiddleware := middleware.RoleMiddleware(user.RoleAdmin, logger) // Assuming RoleAdmin constant
+	authMiddleware := middleware.AuthMiddleware(s.Cfg.Firebase, s.AuthService, s.Logger) // Updated call if FirebaseService is from cfg
+	adminRoleMiddleware := middleware.RoleMiddleware(user.RoleAdmin, s.Logger)
 
-	// Register routes (adapt to your main setup)
+	// Register routes
 	apiGroup := s.Router.Group("/api/v1")
-	listingHandler := listing.NewHandler(listingService, logger)
+	listingHandler := listing.NewHandler(s.ListingService, s.Logger)
 	listingHandler.RegisterRoutes(apiGroup, authMiddleware, adminRoleMiddleware)
-	// Register other handlers if needed for FK constraints (e.g., category creation for tests)
-	categoryHandler := category.NewHandler(catService, logger)
+
+	categoryHandler := category.NewHandler(catService, s.Logger) // Ensure catService is initialized
 	categoryHandler.RegisterRoutes(apiGroup, authMiddleware, adminRoleMiddleware)
 
 
-	// Clean database before running tests
+	// Clean database and ES before running tests (initial full clean)
 	s.cleanupDB()
+	s.cleanupES()
 }
 
 // TearDownSuite runs once after all tests in the suite.
 func (s *IntegrationTestSuite) TearDownSuite() {
-	// Close database connection if necessary
+	s.cleanupES() // Clean ES after all tests
 	sqlDB, _ := s.DB.DB()
 	sqlDB.Close()
 }
 
 // SetupTest runs before each test.
 func (s *IntegrationTestSuite) SetupTest() {
-	// Clean database before each test to ensure isolation
+	// Clean database and ES before each test to ensure isolation
 	s.cleanupDB()
-	// Seed common data if needed for every test (e.g., default categories)
-	// s.seedCategories()
+	s.cleanupES()
+	// s.seedCategories() // If common categories are needed
 }
 
 // Helper to clean all relevant tables.
 func (s *IntegrationTestSuite) cleanupDB() {
+	// Order matters due to foreign key constraints
 	s.DB.Exec("DELETE FROM listing_details_events")
 	s.DB.Exec("DELETE FROM listing_details_housing")
 	s.DB.Exec("DELETE FROM listing_details_babysitting")
@@ -118,8 +140,35 @@ func (s *IntegrationTestSuite) cleanupDB() {
 	s.DB.Exec("DELETE FROM sub_categories")
 	s.DB.Exec("DELETE FROM categories")
 	s.DB.Exec("DELETE FROM users")
-	// Add other tables if necessary
 }
+
+// Helper to clean Elasticsearch listings index
+func (s *IntegrationTestSuite) cleanupES() {
+	if s.ESClient != nil && s.ESClient.Client != nil && s.Cfg.ElasticsearchURL != "" {
+		// Option 1: Delete and recreate index
+		// _, err := s.ESClient.Client.Indices.Delete([]string{elasticsearch.ListingsIndexName})
+		// if err == nil { // or check for specific non-existence errors
+		// 	elasticsearch.CreateListingsIndexIfNotExists(s.ESClient, s.Logger)
+		// }
+		// Option 2: Delete all documents (safer if index settings are complex)
+		deleteReq := esapi.DeleteByQueryRequest{
+			Index: []string{elasticsearch.ListingsIndexName},
+			Body:  strings.NewReader(`{"query":{"match_all":{}}}`),
+			Refresh: common.Ptr(true), // Make it synchronous for tests
+		}
+		res, err := deleteReq.Do(context.Background(), s.ESClient.Client)
+		if err != nil {
+			s.Logger.Warn("Failed to delete all documents from ES", zap.Error(err))
+		}
+		if res != nil && res.IsError() && res.StatusCode != http.StatusNotFound {
+			s.Logger.Warn("Error response when deleting all documents from ES", zap.String("status", res.Status()))
+		}
+		if res != nil {
+			res.Body.Close()
+		}
+	}
+}
+
 
 // Helper to create a user and return user and token.
 func (s *IntegrationTestSuite) createUser(username, email, password string, role user.UserRole) (*user.User, string) {
@@ -158,33 +207,56 @@ func (s *IntegrationTestSuite) createSubCategory(name, slug string, parentID uui
 	return subCat
 }
 
-// Helper to create a listing.
-func (s *IntegrationTestSuite) createListing(userID, catID uuid.UUID, subCatID *uuid.UUID, title string, status listing.ListingStatus, details interface{}) *listing.Listing {
-	l := &listing.Listing{
-		UserID:        userID,
+// Helper to create a listing using the service layer (ensures it's indexed in ES).
+func (s *IntegrationTestSuite) createListingViaService(userID, catID uuid.UUID, subCatID *uuid.UUID, title string, status listing.ListingStatus, isAdminApproved bool, details interface{}) *listing.Listing {
+	req := listing.CreateListingRequest{
 		CategoryID:    catID,
 		SubCategoryID: subCatID,
 		Title:         title,
 		Description:   title + " description",
-		Status:        status,
-		ExpiresAt:     time.Now().Add(24 * 30 * time.Hour), // Default 30 days expiry
-		IsAdminApproved: true, // Assume approved unless specified
-	}
-	// Add details based on interface type
-	switch d := details.(type) {
-	case *listing.ListingDetailsEvents:
-		l.EventDetails = d
-	case *listing.ListingDetailsHousing:
-		l.HousingDetails = d
-	case *listing.ListingDetailsBabysitting:
-		l.BabysittingDetails = d
+		// ContactName, Email, Phone, Address etc. can be added if needed for specific tests
+		// For geo-search tests, Latitude and Longitude must be provided.
 	}
 
-	err := s.ListingRepo.Create(context.Background(), l)
-	s.Require().NoError(err)
-	// Reload to ensure all associations are populated if needed by tests immediately after creation
-	createdListing, err := s.ListingRepo.FindByID(context.Background(), l.ID, true)
-	s.Require().NoError(err)
+	// Populate details based on type
+	switch d := details.(type) {
+	case *listing.CreateListingEventDetailsRequest:
+		req.EventDetails = d
+	case *listing.CreateListingHousingDetailsRequest:
+		req.HousingDetails = d
+	case *listing.CreateListingBabysittingDetailsRequest:
+		req.BabysittingDetails = d
+	// Add LatLonDetails for geo tests
+	case *struct{Lat float64; Lon float64}:
+		req.Latitude = &d.Lat
+		req.Longitude = &d.Lon
+	}
+
+	// Note: The CreateListing service method itself sets status based on first post approval logic.
+	// If tests need specific statuses, they might need to use AdminUpdateListingStatus afterwards,
+	// or the test user (testUser.IsFirstPostApproved) needs to be managed.
+	// For simplicity, we assume IsFirstPostApproved = true for the test user here.
+	// The `status` param to this helper might be less effective unless we adjust the test user.
+
+	createdListing, err := s.ListingService.CreateListing(context.Background(), userID, req)
+	s.Require().NoError(err, "Failed to create listing via service")
+	s.Require().NotNil(createdListing)
+
+	// If a specific status needs to be forced (e.g. for testing filters) and admin approval
+	if createdListing.Status != status || createdListing.IsAdminApproved != isAdminApproved {
+		if s.ESClient == nil { // Cannot update status if ES is not running as service layer will fail
+			s.T().Logf("Skipping status/approval update for listing %s as ES client is not available", createdListing.ID)
+			return createdListing
+		}
+		updatedL, errUpdate := s.ListingService.AdminUpdateListingStatus(context.Background(), createdListing.ID, status, nil)
+		s.Require().NoError(errUpdate, "Failed to update listing status for test setup")
+		if isAdminApproved && !updatedL.IsAdminApproved { // AdminUpdateListingStatus might set it to active but not approved
+			updatedL, errUpdate = s.ListingService.AdminUpdateListingStatus(context.Background(), createdListing.ID, status, nil) // Re-approve if needed
+			s.Require().NoError(errUpdate, "Failed to re-approve listing for test setup")
+		}
+		return updatedL
+	}
+
 	return createdListing
 }
 
@@ -199,6 +271,83 @@ func TestIntegrationTestSuite(t *testing.T) {
 
 // --- Test Cases Start Here ---
 
+// TestSearchListings_TextAndGeo performs text and geo search.
+func (s *IntegrationTestSuite) TestSearchListings_TextAndGeo() {
+	if s.ESClient == nil {
+		s.T().Skip("Skipping Elasticsearch tests as ES client is not initialized.")
+	}
+
+	user1, _ := s.createUser("searchUser", "search@example.com", "password", user.RoleUser)
+	catServices := s.createCategory("Services Test", "services-test")
+
+	// Create some listings
+	s.createListingViaService(user1.ID, catServices.ID, nil, "Awesome Seattle Plumber", listing.StatusActive, true,
+		&struct{Lat float64; Lon float64}{Lat: 47.6062, Lon: -122.3321}) // Seattle center
+	s.createListingViaService(user1.ID, catServices.ID, nil, "Great Seattle Painter", listing.StatusActive, true,
+		&struct{Lat float64; Lon float64}{Lat: 47.6100, Lon: -122.3350}) // Slightly North
+	s.createListingViaService(user1.ID, catServices.ID, nil, "Bellevue Roofer Service", listing.StatusActive, true,
+		&struct{Lat float64; Lon float64}{Lat: 47.6101, Lon: -122.2007}) // Bellevue
+
+	s.Run("TextSearchForPlumber", func() {
+		req, _ := http.NewRequest("GET", "/api/v1/listings?q=Plumber", nil)
+		rr := httptest.NewRecorder()
+		s.Router.ServeHTTP(rr, req)
+		s.Equal(http.StatusOK, rr.Code)
+		var resp common.PaginatedResponse
+		json.Unmarshal(rr.Body.Bytes(), &resp)
+		s.Equal(1, len(resp.Data.([]interface{})))
+		// Further assertions on the content
+		firstItem := resp.Data.([]interface{})[0].(map[string]interface{})
+		s.Contains(firstItem["title"], "Plumber")
+	})
+
+	s.Run("GeoSearchNearSeattleCenter", func() {
+		// Assuming MaxDistanceKM is appropriately set in service or queryParams if not here
+		// For ES, default query.MaxDistanceKM might not be applied unless explicitly handled in service.SearchListings
+		// Let's test with an explicit distance.
+		req, _ := http.NewRequest("GET", "/api/v1/listings?lat=47.6062&lon=-122.3321&max_distance_km=5&sort_by=distance&sort_order=asc", nil)
+		rr := httptest.NewRecorder()
+		s.Router.ServeHTTP(rr, req)
+		s.Equal(http.StatusOK, rr.Code, rr.Body.String())
+		var resp common.PaginatedResponse
+		json.Unmarshal(rr.Body.Bytes(), &resp)
+
+		// Should find "Awesome Seattle Plumber" and "Great Seattle Painter"
+		s.True(len(resp.Data.([]interface{})) >= 2, fmt.Sprintf("Expected at least 2 results, got %d", len(resp.Data.([]interface{}))))
+
+		foundPlumber := false
+		foundPainter := false
+		for _, item := range resp.Data.([]interface{}) {
+			listingMap := item.(map[string]interface{})
+			title := listingMap["title"].(string)
+			if title == "Awesome Seattle Plumber" {
+				foundPlumber = true
+				// Check distance is populated if sort_by=distance
+				_, ok := listingMap["distance_km"]
+				s.True(ok, "distance_km should be present when sorting by distance")
+			}
+			if title == "Great Seattle Painter" {
+				foundPainter = true
+			}
+		}
+		s.True(foundPlumber, "Did not find Plumber listing in geo search")
+		s.True(foundPainter, "Did not find Painter listing in geo search")
+
+		// Check if Bellevue Roofer is NOT found (it's > 5km away from Seattle center)
+		foundRoofer := false
+		for _, item := range resp.Data.([]interface{}) {
+			if item.(map[string]interface{})["title"] == "Bellevue Roofer Service" {
+				foundRoofer = true
+				break
+			}
+		}
+		s.False(foundRoofer, "Bellevue Roofer should not be found within 5km of Seattle center")
+	})
+
+	// Add more tests for category filters, status filters, etc.
+}
+
+
 // TestGetMyListings_Success
 func (s *IntegrationTestSuite) TestGetMyListings_Success() {
 	user1, token1 := s.createUser("user1", "user1@example.com", "password123", user.RoleUser)
@@ -207,9 +356,11 @@ func (s *IntegrationTestSuite) TestGetMyListings_Success() {
 	catEvents := s.createCategory("Events", "events")
 	catHousing := s.createCategory("Housing", "housing")
 
-	s.createListing(user1.ID, catEvents.ID, nil, "User1 Event Listing", listing.StatusActive, &listing.ListingDetailsEvents{EventDate: time.Now().Add(5 * 24 * time.Hour)})
-	s.createListing(user1.ID, catHousing.ID, nil, "User1 Housing Listing", listing.StatusPendingApproval, &listing.ListingDetailsHousing{PropertyType: listing.HousingForRent, RentDetails: common.Ptr("Monthly")})
-	s.createListing(user2.ID, catEvents.ID, nil, "User2 Event Listing", listing.StatusActive, nil)
+	// Use createListingViaService to ensure data is in ES for other search tests if they exist
+	s.createListingViaService(user1.ID, catEvents.ID, nil, "User1 Event Listing", listing.StatusActive, true, &listing.CreateListingEventDetailsRequest{EventDate: time.Now().Add(5 * 24 * time.Hour).Format("2006-01-02")})
+	s.createListingViaService(user1.ID, catHousing.ID, nil, "User1 Housing Listing", listing.StatusPendingApproval, true, &listing.CreateListingHousingDetailsRequest{PropertyType: listing.HousingForRent, RentDetails: common.Ptr("Monthly")})
+	s.createListingViaService(user2.ID, catEvents.ID, nil, "User2 Event Listing", listing.StatusActive, true, nil)
+
 
 	req, _ := http.NewRequest("GET", "/api/v1/listings/my-listings", nil)
 	req.Header.Set("Authorization", "Bearer "+token1)
