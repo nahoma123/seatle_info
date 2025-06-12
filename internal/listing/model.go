@@ -93,7 +93,7 @@ type Listing struct {
 	Latitude      *float64              `gorm:"type:decimal(10,8)"`
 	Longitude     *float64              `gorm:"type:decimal(11,8)"`
 	Location      *PostGISPoint         `gorm:"-"`
-	LocationWKT   string                `gorm:"column:location_wkt"`
+	LocationWKT   string                `gorm:"column:location_wkt;->:false"`
 
 	ExpiresAt          time.Time                  `gorm:"not null"`
 	IsAdminApproved    bool                       `gorm:"not null;default:false"`
