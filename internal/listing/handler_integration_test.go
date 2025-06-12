@@ -701,6 +701,90 @@ func (s *IntegrationTestSuite) TestUpdateListing_Success_BabysittingDetails() {
 	s.Equal(initialListing.Title, dbListing.Title) // Core fields should not change
 }
 
+// TestCreateListing_ShortDescription_Success tests creating a listing with a description
+// that meets the new minimum length requirement (e.g., 10-19 chars) and also tests
+// that a description shorter than the new minimum fails.
+func (s *IntegrationTestSuite) TestCreateListing_ShortDescription_Success() {
+	testUser, token := s.createUser("shortdescuser", "shortdesc@example.com", "password", user.RoleUser)
+	// Use "baby-sitting" slug to trigger specific validation if any in service layer
+	// The service layer checks for cat.Slug == "baby-sitting" to require BabysittingDetails
+	catBabysitting := s.createCategory("Babysitting For Short Desc", "baby-sitting")
+	s.Require().NotNil(catBabysitting, "Category creation failed")
+
+	// Valid short description (15 chars). New min is 10, old was 20.
+	validShortDesc := "Fifteen chars !"
+	s.Require().Len(validShortDesc, 15, "Test description length is not 15")
+
+	createReqValid := listing.CreateListingRequest{
+		CategoryID:  catBabysitting.ID,
+		Title:       "Babysitter Available Now", // Title also has min length (e.g. 5)
+		Description: validShortDesc,
+		BabysittingDetails: &listing.CreateListingBabysittingDetailsRequest{
+			LanguagesSpoken: []string{"English"},
+		},
+	}
+	jsonBodyValid, errMarshal := json.Marshal(createReqValid)
+	s.Require().NoError(errMarshal, "Failed to marshal valid request")
+
+	reqValid, _ := http.NewRequest("POST", "/api/v1/listings", bytes.NewBuffer(jsonBodyValid))
+	reqValid.Header.Set("Authorization", "Bearer "+token)
+	reqValid.Header.Set("Content-Type", "application/json")
+
+	rrValid := httptest.NewRecorder()
+	s.Router.ServeHTTP(rrValid, reqValid)
+
+	s.Equal(http.StatusCreated, rrValid.Code, "Expected StatusCreated. Response body: "+rrValid.Body.String())
+
+	var respValid common.StandardResponse // Assuming common.StandardResponse { Success bool, Message string, Data interface{} }
+	err := json.Unmarshal(rrValid.Body.Bytes(), &respValid)
+	s.NoError(err, "Failed to unmarshal valid response: "+rrValid.Body.String())
+	s.True(respValid.Success, "Expected success to be true in valid response")
+
+	// Extract and assert description from response data
+	responseDataBytes, _ := json.Marshal(respValid.Data)
+	var listingResp listing.ListingResponse
+	err = json.Unmarshal(responseDataBytes, &listingResp)
+	s.NoError(err, "Failed to unmarshal listing response from valid data: "+string(responseDataBytes))
+	s.Equal(validShortDesc, listingResp.Description)
+	s.Equal(catBabysitting.ID, listingResp.CategoryID)
+	s.NotNil(listingResp.BabysittingDetails, "BabysittingDetails should not be nil")
+	s.Contains(listingResp.BabysittingDetails.LanguagesSpoken, "English")
+
+
+	// Test with a description shorter than the new minimum (e.g., 5 chars)
+	invalidShortDesc := "Short" // 5 chars, new min is 10
+	s.Require().True(len(invalidShortDesc) < 10, "Invalid description should be less than 10 chars")
+
+	createReqInvalid := listing.CreateListingRequest{
+		CategoryID:  catBabysitting.ID,
+		Title:       "Babysitter Invalid Desc", // Title also has min length
+		Description: invalidShortDesc,
+		BabysittingDetails: &listing.CreateListingBabysittingDetailsRequest{
+			LanguagesSpoken: []string{"English"},
+		},
+	}
+	jsonBodyInvalid, errMarshal := json.Marshal(createReqInvalid)
+	s.Require().NoError(errMarshal, "Failed to marshal invalid request")
+
+	reqInvalid, _ := http.NewRequest("POST", "/api/v1/listings", bytes.NewBuffer(jsonBodyInvalid))
+	reqInvalid.Header.Set("Authorization", "Bearer "+token)
+	reqInvalid.Header.Set("Content-Type", "application/json")
+
+	rrInvalid := httptest.NewRecorder()
+	s.Router.ServeHTTP(rrInvalid, reqInvalid)
+
+	s.Equal(http.StatusUnprocessableEntity, rrInvalid.Code, "Expected StatusUnprocessableEntity for too short description. Response body: "+rrInvalid.Body.String())
+
+	// Check for error message (structure might vary based on actual error response)
+	var errResp common.ErrorResponse // Assuming common.ErrorResponse { Success bool, Message string, Errors []FieldError } or similar
+	err = json.Unmarshal(rrInvalid.Body.Bytes(), &errResp)
+	s.NoError(err, "Failed to unmarshal error response: "+rrInvalid.Body.String())
+	s.False(errResp.Success, "Expected success to be false in error response")
+	// A more specific check for the actual error message related to 'Description' would be good if the error response structure allows.
+	// For example, if ErrorResponse.Errors is a map or slice of field errors:
+	// s.Contains(errResp.Message, "Description") // Or check for specific error tag 'min'
+}
+
 
 // Note on common.Ptr: Assuming a helper function like:
 // func Ptr[T any](v T) *T { return &v }

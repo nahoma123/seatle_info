@@ -168,7 +168,7 @@ type CreateListingRequest struct {
 	CategoryID         uuid.UUID                               `json:"category_id" binding:"required"`
 	SubCategoryID      *uuid.UUID                              `json:"sub_category_id,omitempty"`
 	Title              string                                  `json:"title" binding:"required,min=5,max=255"`
-	Description        string                                  `json:"description" binding:"required,min=20"`
+	Description        string                                  `json:"description" binding:"required,min=10"`
 	ContactName        *string                                 `json:"contact_name,omitempty" binding:"omitempty,max=150"`
 	ContactEmail       *string                                 `json:"contact_email,omitempty" binding:"omitempty,email,max=255"`
 	ContactPhone       *string                                 `json:"contact_phone,omitempty" binding:"omitempty,max=50"`
@@ -188,7 +188,7 @@ type UpdateListingRequest struct {
 	CategoryID         *uuid.UUID                              `json:"category_id,omitempty"`
 	SubCategoryID      *uuid.UUID                              `json:"sub_category_id,omitempty"`
 	Title              *string                                 `json:"title,omitempty" binding:"omitempty,min=5,max=255"`
-	Description        *string                                 `json:"description,omitempty" binding:"omitempty,min=20"`
+	Description        *string                                 `json:"description,omitempty" binding:"omitempty,min=10"`
 	ContactName        *string                                 `json:"contact_name,omitempty" binding:"omitempty,max=150"`
 	ContactEmail       *string                                 `json:"contact_email,omitempty" binding:"omitempty,email,max=255"`
 	ContactPhone       *string                                 `json:"contact_phone,omitempty" binding:"omitempty,max=50"`
