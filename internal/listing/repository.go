@@ -66,8 +66,11 @@ func (r *GORMRepository) Create(ctx context.Context, listing *Listing) error {
 		// Create details if they exist
 		if listing.BabysittingDetails != nil {
 			listing.BabysittingDetails.ListingID = listing.ID
-			if err := tx.Create(listing.BabysittingDetails).Error; err != nil {
-				return fmt.Errorf("failed to create babysitting details: %w", err)
+			if err := tx.Clauses(clause.OnConflict{
+				Columns:   []clause.Column{{Name: "listing_id"}}, // Ensure this is the correct column name
+				DoUpdates: clause.AssignmentColumns(getUpdatableColumns(ListingDetailsBabysitting{})),
+			}).Create(listing.BabysittingDetails).Error; err != nil {
+				return fmt.Errorf("failed to create or update babysitting details: %w", err) // Adjusted error message
 			}
 		}
 		if listing.HousingDetails != nil {
