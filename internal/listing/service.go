@@ -11,82 +11,18 @@ import (
 	"seattle_info_backend/internal/common"
 	"seattle_info_backend/internal/config"
 	"seattle_info_backend/internal/notification"
-	platformElasticsearch "seattle_info_backend/internal/platform/elasticsearch" // Re-add for ESClientWrapper
+	"seattle_info_backend/internal/listing/esutil" // Added for ListingToElasticsearchDoc
+	platformElasticsearch "seattle_info_backend/internal/platform/elasticsearch"
 	"seattle_info_backend/internal/user"
 
-	"encoding/json" // Added for marshalling
-	"strings"       // Added for strings.NewReader
+	"encoding/json" // Keep for ES search result processing
+	"strings"       // Keep for ES search body and IndexRequest
 
-	"github.com/elastic/go-elasticsearch/v8/esapi" // Added for esapi.IndexRequest etc.
+	"github.com/elastic/go-elasticsearch/v8/esapi"
 	"github.com/google/uuid"
 	"go.uber.org/zap"
 )
 
-// listingToElasticsearchDoc converts a Listing model to its Elasticsearch document representation.
-func listingToElasticsearchDoc(listing *Listing) (string, error) {
-	if listing == nil {
-		return "", errors.New("listing cannot be nil")
-	}
-
-	doc := map[string]interface{}{
-		"title":             listing.Title,
-		"description":       listing.Description,
-		"category_id":       listing.CategoryID.String(),
-		"user_id":           listing.UserID.String(),
-		"status":            string(listing.Status),
-		"expires_at":        listing.ExpiresAt,
-		"created_at":        listing.CreatedAt,
-		"updated_at":        listing.UpdatedAt,
-		"is_admin_approved": listing.IsAdminApproved,
-		"contact_name":      listing.ContactName,
-		"city":              listing.City,
-		"state":             listing.State,
-		"zip_code":          listing.ZipCode,
-		"address_line1":     listing.AddressLine1,
-	}
-
-	if listing.SubCategoryID != nil && *listing.SubCategoryID != uuid.Nil {
-		doc["sub_category_id"] = listing.SubCategoryID.String()
-	} else {
-		doc["sub_category_id"] = nil // Explicitly set to null if not present
-	}
-
-	if listing.Latitude != nil && listing.Longitude != nil {
-		doc["location"] = map[string]float64{
-			"lat": *listing.Latitude,
-			"lon": *listing.Longitude,
-		}
-	} else {
-		doc["location"] = nil // Explicitly set to null if not present
-	}
-
-	// Specific details based on category (if available and loaded)
-	// These fields should match the index mapping
-	if listing.BabysittingDetails != nil {
-		doc["languages_spoken"] = listing.BabysittingDetails.LanguagesSpoken
-	}
-	if listing.HousingDetails != nil {
-		doc["property_type"] = listing.HousingDetails.PropertyType
-		if listing.HousingDetails.RentDetails != nil {
-			doc["rent_details"] = *listing.HousingDetails.RentDetails
-		}
-		if listing.HousingDetails.SalePrice != nil {
-			doc["sale_price"] = *listing.HousingDetails.SalePrice
-		}
-	}
-	if listing.EventDetails != nil {
-		doc["event_date"] = listing.EventDetails.EventDate.Format("2006-01-02") // Ensure date format consistency
-		doc["event_time"] = listing.EventDetails.EventTime
-		doc["organizer_name"] = listing.EventDetails.OrganizerName
-		doc["venue_name"] = listing.EventDetails.VenueName
-	}
-
-	docBytes, err := json.Marshal(doc)
-	if err != nil {
-		return "", fmt.Errorf("error marshalling listing to JSON for ES: %w", err)
-	}
-	return string(docBytes), nil
-}
 
 // Service defines the interface for listing-related business logic.
 type Service interface {
@@ -319,7 +255,7 @@ func (s *ServiceImplementation) CreateListing(ctx context.Context, userID uuid.U
 
 	// Index to Elasticsearch
 	if s.esClient != nil && s.esClient.Client != nil && createdListing != nil {
-		docJSON, errDoc := listingToElasticsearchDoc(createdListing)
+		docJSON, errDoc := esutil.ListingToElasticsearchDoc(createdListing) // Use esutil
 		if errDoc != nil {
 			s.logger.Error("Failed to convert listing to Elasticsearch document for CreateListing",
 				zap.String("listingID", createdListing.ID.String()),
@@ -562,7 +498,7 @@ func (s *ServiceImplementation) UpdateListing(ctx context.Context, id uuid.UUID,
 
 	// Update Elasticsearch index
 	if s.esClient != nil && s.esClient.Client != nil && updatedListing != nil {
-		docJSON, errDoc := listingToElasticsearchDoc(updatedListing)
+		docJSON, errDoc := esutil.ListingToElasticsearchDoc(updatedListing) // Use esutil
 		if errDoc != nil {
 			s.logger.Error("Failed to convert listing to Elasticsearch document for UpdateListing",
 				zap.String("listingID", updatedListing.ID.String()),

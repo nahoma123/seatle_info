@@ -30,6 +30,7 @@ type Repository interface {
 	GetRecentListings(ctx context.Context, page, pageSize int, currentUserID *uuid.UUID) ([]Listing, *common.Pagination, error)
 	GetUpcomingEvents(ctx context.Context, page, pageSize int) ([]Listing, *common.Pagination, error)
 	FindByUserID(ctx context.Context, userID uuid.UUID, query UserListingsQuery) ([]Listing, *common.Pagination, error)
+	FindAllForSync(ctx context.Context, offset int, limit int) ([]Listing, error) // Added for ES sync
 }
 
 // GORMRepository implements the listing Repository interface using GORM.
@@ -317,6 +318,47 @@ func (r *GORMRepository) Search(ctx context.Context, queryParams ListingSearchQu
 	}
 
 	return listings, pagination, nil
+}
+
+// FindAllForSync retrieves all listings with specified offset and limit for ES synchronization.
+// It preloads all necessary associations.
+func (r *GORMRepository) FindAllForSync(ctx context.Context, offset int, limit int) ([]Listing, error) {
+	var listings []Listing
+
+	dbQuery := r.db.WithContext(ctx).Model(&Listing{})
+	dbQuery = r.preloader(dbQuery) // Apply common preloads
+
+	// Order by a consistent key for stable batching
+	dbQuery = dbQuery.Order("listings.id ASC") // Ensure "listings.id" to avoid ambiguity if other tables have "id"
+
+	// Apply offset and limit
+	dbQuery = dbQuery.Offset(offset).Limit(limit)
+
+	// Handle location WKT like other find methods
+	dbQuery = dbQuery.
+		Omit("location").
+		Select("listings.*, ST_AsText(location) AS location_wkt")
+
+	if err := dbQuery.Find(&listings).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return []Listing{}, nil // Return empty slice if no records found (not an error for sync)
+		}
+		return nil, fmt.Errorf("failed to find listings for sync: %w", err)
+	}
+
+	for i := range listings {
+		if listings[i].LocationWKT != "" {
+			point, err := parseWKT(listings[i].LocationWKT)
+			if err != nil {
+				// Log or handle error properly for this specific listing
+				fmt.Printf("Warning: Failed to parse WKT for listing %s during sync: %v\n", listings[i].ID, err)
+				listings[i].Location = nil // Ensure location is nil if parsing fails
+				continue
+			}
+			listings[i].Location = point
+		}
+	}
+	return listings, nil
 }
 
 // UpdateStatus updates the status of a listing (typically by an admin).
