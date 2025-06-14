@@ -27,14 +27,6 @@ type User struct {
 	// Listings            []listing.Listing `gorm:"foreignKey:UserID"` // This will cause import cycle if listing imports user
 }
 
-// UserSearchQuery defines the query parameters for searching users.
-type UserSearchQuery struct {
-	common.PaginationQuery      // Embeds Page, PageSize, SortBy, SortOrder
-	Email                *string `form:"email"` // Pointer to allow empty/nil value
-	Name                 *string `form:"name"`  // Pointer to allow empty/nil value, will search FirstName and LastName
-	Role                 *string `form:"role"`  // Pointer to allow empty/nil value
-}
-
 // TableName specifies the table name for the User model.
 func (User) TableName() string {
 	return "users"

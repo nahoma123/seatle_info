@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"seattle_info_backend/internal/common"
+	"seattle_info_backend/internal/shared" // Added for shared.UserSearchQuery
 
 	"github.com/google/uuid"
 	"gorm.io/gorm"
@@ -21,7 +22,7 @@ type Repository interface {
 	Update(ctx context.Context, user *User) error
 	FindByProvider(ctx context.Context, authProvider string, providerID string) (*User, error)
 	FindByFirebaseUID(ctx context.Context, firebaseUID string) (*User, error)
-	SearchUsers(ctx context.Context, query UserSearchQuery) ([]User, *common.Pagination, error)
+	SearchUsers(ctx context.Context, query shared.UserSearchQuery) ([]User, *common.Pagination, error)
 }
 
 // GORMRepository implements the Repository interface using GORM.
@@ -73,7 +74,7 @@ func (r *GORMRepository) FindByEmail(ctx context.Context, email string) (*User, 
 }
 
 // SearchUsers retrieves users based on search criteria and returns paginated results.
-func (r *GORMRepository) SearchUsers(ctx context.Context, query UserSearchQuery) ([]User, *common.Pagination, error) {
+func (r *GORMRepository) SearchUsers(ctx context.Context, query shared.UserSearchQuery) ([]User, *common.Pagination, error) {
 	var users []User
 	var totalCount int64
 

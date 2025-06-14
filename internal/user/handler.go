@@ -97,7 +97,7 @@ func (h *Handler) getUserByID(c *gin.Context) {
 // searchUsers handles GET requests to search for users based on query parameters.
 // It supports pagination and filtering by email, name, and role.
 func (h *Handler) searchUsers(c *gin.Context) {
-	var query UserSearchQuery // This is user.UserSearchQuery from model.go
+	var query shared.UserSearchQuery // Changed to shared.UserSearchQuery
 
 	// Bind query parameters (e.g., email, name, role)
 	if err := c.ShouldBindQuery(&query); err != nil {

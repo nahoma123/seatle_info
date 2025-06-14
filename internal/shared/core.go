@@ -2,8 +2,7 @@ package shared
 
 import (
 	"context"
-	"seattle_info_backend/internal/common" // Added for Pagination
-	"seattle_info_backend/internal/user"   // Added for UserSearchQuery
+	"seattle_info_backend/internal/common" // For PaginationQuery
 	"time"
 
 	firebaseauth "firebase.google.com/go/v4/auth"
@@ -26,6 +25,15 @@ type User struct {
 	LastLoginAt         *time.Time // New field
 }
 
+// UserSearchQuery defines the query parameters for searching users.
+// Moved from internal/user/model.go to break import cycle.
+type UserSearchQuery struct {
+	common.PaginationQuery      // Embeds Page, PageSize, SortBy, SortOrder
+	Email                *string `form:"email"` // Pointer to allow empty/nil value
+	Name                 *string `form:"name"`  // Pointer to allow empty/nil value, will search FirstName and LastName
+	Role                 *string `form:"role"`  // Pointer to allow empty/nil value
+}
+
 // Service defines the interface for user-related business logic.
 // This interface remains as it's used by other parts of the application (e.g., handlers).
 type Service interface {
@@ -33,7 +41,7 @@ type Service interface {
 	GetUserByEmail(ctx context.Context, email string) (*User, error)
 	GetOrCreateUserFromFirebaseClaims(ctx context.Context, firebaseToken *firebaseauth.Token) (usr *User, wasCreated bool, err error)
 	GetUserByFirebaseUID(ctx context.Context, firebaseUID string) (*User, error)
-	SearchUsers(ctx context.Context, query user.UserSearchQuery) ([]*User, *common.Pagination, error)
+	SearchUsers(ctx context.Context, query UserSearchQuery) ([]*User, *common.Pagination, error) // Now uses shared.UserSearchQuery
 }
 
 // Obsolete structs and interfaces related to old JWT/OAuth system are removed below.

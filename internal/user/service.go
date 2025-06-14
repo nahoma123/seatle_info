@@ -215,7 +215,7 @@ func (s *ServiceImplementation) GetUserByFirebaseUID(ctx context.Context, fireba
 }
 
 // SearchUsers searches for users based on the provided query.
-func (s *ServiceImplementation) SearchUsers(ctx context.Context, query UserSearchQuery) ([]*shared.User, *common.Pagination, error) {
+func (s *ServiceImplementation) SearchUsers(ctx context.Context, query shared.UserSearchQuery) ([]*shared.User, *common.Pagination, error) {
 	s.logger.Debug("Service: SearchUsers initiated", zap.Any("query", query))
 
 	// Call the repository's SearchUsers method
