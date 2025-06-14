@@ -213,3 +213,26 @@ func (s *ServiceImplementation) GetUserByFirebaseUID(ctx context.Context, fireba
 	}
 	return DBToShared(dbUser), nil
 }
+
+// SearchUsers searches for users based on the provided query.
+func (s *ServiceImplementation) SearchUsers(ctx context.Context, query UserSearchQuery) ([]*shared.User, *common.Pagination, error) {
+	s.logger.Debug("Service: SearchUsers initiated", zap.Any("query", query))
+
+	// Call the repository's SearchUsers method
+	dbUsers, pagination, err := s.repo.SearchUsers(ctx, query)
+	if err != nil {
+		s.logger.Error("Service: Error searching users in repository", zap.Error(err), zap.Any("query", query))
+		return nil, nil, err // Propagate the error
+	}
+
+	// Convert []user.User to []*shared.User
+	sharedUsers := make([]*shared.User, 0, len(dbUsers))
+	for i := range dbUsers {
+		// Need to pass a pointer to the user object from the slice.
+		// dbUsers[i] is a value (struct), so &dbUsers[i] gives a pointer to it.
+		sharedUsers = append(sharedUsers, DBToShared(&dbUsers[i]))
+	}
+
+	s.logger.Info("Service: SearchUsers completed successfully", zap.Int("count", len(sharedUsers)), zap.Any("pagination", pagination))
+	return sharedUsers, pagination, nil
+}

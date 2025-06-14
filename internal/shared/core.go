@@ -2,6 +2,8 @@ package shared
 
 import (
 	"context"
+	"seattle_info_backend/internal/common" // Added for Pagination
+	"seattle_info_backend/internal/user"   // Added for UserSearchQuery
 	"time"
 
 	firebaseauth "firebase.google.com/go/v4/auth"
@@ -31,6 +33,7 @@ type Service interface {
 	GetUserByEmail(ctx context.Context, email string) (*User, error)
 	GetOrCreateUserFromFirebaseClaims(ctx context.Context, firebaseToken *firebaseauth.Token) (usr *User, wasCreated bool, err error)
 	GetUserByFirebaseUID(ctx context.Context, firebaseUID string) (*User, error)
+	SearchUsers(ctx context.Context, query user.UserSearchQuery) ([]*User, *common.Pagination, error)
 }
 
 // Obsolete structs and interfaces related to old JWT/OAuth system are removed below.

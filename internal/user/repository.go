@@ -21,6 +21,7 @@ type Repository interface {
 	Update(ctx context.Context, user *User) error
 	FindByProvider(ctx context.Context, authProvider string, providerID string) (*User, error)
 	FindByFirebaseUID(ctx context.Context, firebaseUID string) (*User, error)
+	SearchUsers(ctx context.Context, query UserSearchQuery) ([]User, *common.Pagination, error)
 }
 
 // GORMRepository implements the Repository interface using GORM.
@@ -69,6 +70,66 @@ func (r *GORMRepository) FindByEmail(ctx context.Context, email string) (*User, 
 		return nil, err
 	}
 	return &userModel, nil
+}
+
+// SearchUsers retrieves users based on search criteria and returns paginated results.
+func (r *GORMRepository) SearchUsers(ctx context.Context, query UserSearchQuery) ([]User, *common.Pagination, error) {
+	var users []User
+	var totalCount int64
+
+	db := r.db.WithContext(ctx).Model(&User{})
+
+	// Apply filters
+	if query.Email != nil && *query.Email != "" {
+		// Case-insensitive search for email
+		db = db.Where("LOWER(email) LIKE LOWER(?)", "%"+strings.TrimSpace(*query.Email)+"%")
+	}
+	if query.Name != nil && *query.Name != "" {
+		nameQuery := "%" + strings.TrimSpace(*query.Name) + "%"
+		// Case-insensitive search for name in first_name or last_name
+		db = db.Where("LOWER(first_name) LIKE LOWER(?) OR LOWER(last_name) LIKE LOWER(?)", nameQuery, nameQuery)
+	}
+	if query.Role != nil && *query.Role != "" {
+		db = db.Where("role = ?", strings.TrimSpace(*query.Role))
+	}
+
+	// Get total count before pagination
+	if err := db.Count(&totalCount).Error; err != nil {
+		return nil, nil, fmt.Errorf("failed to count users: %w", err)
+	}
+
+	// Apply pagination
+	// Ensure Page and PageSize are set if they are zero (relying on UserSearchQuery embedding common.PaginationQuery which has defaults)
+	page := query.Page
+	if page <= 0 {
+		page = common.DefaultPage
+	}
+	pageSize := query.PageSize
+	if pageSize <= 0 {
+		pageSize = common.DefaultPageSize
+	}
+
+	offset := (page - 1) * pageSize
+	limit := pageSize
+
+
+	db = db.Offset(offset).Limit(limit)
+
+	// TODO: Add sorting based on query.SortBy and query.SortOrder if they exist in UserSearchQuery
+	// For now, default sorting by CreatedAt DESC or ID
+	// db = db.Order("created_at DESC") // Example
+
+	if err := db.Find(&users).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			// It's not an error if no users match the criteria, return empty list
+			return []User{}, common.NewPagination(0, page, pageSize), nil
+		}
+		return nil, nil, fmt.Errorf("failed to find users: %w", err)
+	}
+
+	pagination := common.NewPagination(totalCount, page, pageSize)
+
+	return users, pagination, nil
 }
 
 // FindByFirebaseUID retrieves a user by their Firebase UID.

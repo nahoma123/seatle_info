@@ -27,41 +27,26 @@ func NewHandler(service shared.Service, logger *zap.Logger) *Handler { // Change
 }
 
 // RegisterRoutes sets up the routes for user operations.
-// It takes the auth middleware function as a parameter.
-func (h *Handler) RegisterRoutes(router *gin.RouterGroup, authMW gin.HandlerFunc) {
-	userGroup := router.Group("/users") // This base group is passed from app/server.go
-	// No specific middleware applied directly here, assuming /users base is public or auth is handled by caller.
-	// If /users itself needs auth, authMW should be applied by the caller to the group passed to RegisterRoutes.
+// It takes auth and admin role middleware functions as parameters.
+func (h *Handler) RegisterRoutes(router *gin.RouterGroup, authMW gin.HandlerFunc, adminRoleMW gin.HandlerFunc) {
+	userGroup := router.Group("/users")
 
-	// Public routes (if any) for users could be registered on userGroup directly.
-	// Example: userGroup.GET("/:id", h.getUserByID) // If GET /users/:id is public
+	// Publicly accessible user profile
+	userGroup.GET("/:id", h.getUserByID)
 
-	// Authenticated routes
-	authenticatedUserGroup := userGroup.Group("") // Create a new subgroup for authenticated routes
-	authenticatedUserGroup.Use(authMW)            // Apply auth middleware to this subgroup
+	// Authenticated route for the user to get their own profile
+	// Note: /auth/me is handled by authHandler. This /users/me is an alternative or additional route.
+	// If /auth/me is the primary, this specific /users/me might be redundant or serve a slightly different purpose.
+	// For now, keeping it as per existing structure, assuming it's desired.
+	authenticatedUserGroup := userGroup.Group("/me")
+	authenticatedUserGroup.Use(authMW)
 	{
-		authenticatedUserGroup.GET("/me", h.getMe)
-		// If GET /users/:id is private and needs auth:
-		// authenticatedUserGroup.GET("/:id", h.getUserByID)
+		authenticatedUserGroup.GET("", h.getMe) // Responds to GET /users/me
 	}
 
-	// For the current setup, where /auth/me is handled by authHandler,
-	// and userHandler is expected to handle /users/me (private) and /users/:id (public).
-	// The userGroup itself should be public for /:id.
-	// A specific authenticated group is needed for /me.
-
-	// Corrected structure based on typical needs:
-	// Public routes on userGroup
-	userGroup.GET("/:id", h.getUserByID) // Publicly accessible user profile
-
-	// Authenticated specific routes
-	// The /me route is already registered by authHandler using authMW.
-	// If there are other user-specific authenticated routes, they'd go into a group like this:
-	// privateUserRoutes := userGroup.Group("") // Or some other path like /profile
-	// privateUserRoutes.Use(authMW)
-	// {
-	//    // e.g., privateUserRoutes.PUT("/me/profile", h.updateMyProfile)
-	// }
+	// Admin-only route for searching/listing users
+	// This makes GET /users an admin-only endpoint.
+	userGroup.GET("", authMW, adminRoleMW, h.searchUsers)
 }
 
 func (h *Handler) getMe(c *gin.Context) {
@@ -107,4 +92,43 @@ func (h *Handler) getUserByID(c *gin.Context) {
 		return
 	}
 	common.RespondOK(c, "User retrieved successfully.", ToUserResponse(usr))
+}
+
+// searchUsers handles GET requests to search for users based on query parameters.
+// It supports pagination and filtering by email, name, and role.
+func (h *Handler) searchUsers(c *gin.Context) {
+	var query UserSearchQuery // This is user.UserSearchQuery from model.go
+
+	// Bind query parameters (e.g., email, name, role)
+	if err := c.ShouldBindQuery(&query); err != nil {
+		h.logger.Warn("Failed to bind query parameters for user search", zap.Error(err))
+		common.RespondWithError(c, common.ErrBadRequest.WithDetails("Invalid search query parameters: "+err.Error()))
+		return
+	}
+
+	// Get pagination parameters (page, page_size) and set them in the query struct
+	// UserSearchQuery embeds common.PaginationQuery, so Page and PageSize fields are directly available.
+	query.Page, query.PageSize = common.GetPaginationParams(c)
+
+	h.logger.Debug("Handler: Initiating user search", zap.Any("query", query))
+
+	// Call the service layer to search for users
+	sharedUsers, pagination, err := h.service.SearchUsers(c.Request.Context(), query)
+	if err != nil {
+		// The service layer should return appropriate common.APIError types
+		h.logger.Error("Handler: Error searching users via service", zap.Error(err), zap.Any("query", query))
+		common.RespondWithError(c, err) // Pass the error directly
+		return
+	}
+
+	// Convert []*shared.User to []UserResponse
+	userResponses := make([]UserResponse, 0, len(sharedUsers))
+	for _, sharedUser := range sharedUsers {
+		if sharedUser != nil { // Ensure sharedUser is not nil before converting
+			userResponses = append(userResponses, ToUserResponse(sharedUser))
+		}
+	}
+
+	h.logger.Info("Handler: User search successful", zap.Int("count", len(userResponses)), zap.Any("pagination", pagination))
+	common.RespondPaginated(c, "Users retrieved successfully.", userResponses, pagination)
 }

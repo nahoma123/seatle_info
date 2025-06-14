@@ -98,7 +98,7 @@ func NewServer(
 	authHandler.RegisterRoutes(authRouterGroup)
 
 	// Register routes for other modules by passing the base v1 group and middlewares
-	userHandler.RegisterRoutes(v1, authMW)
+	userHandler.RegisterRoutes(v1, authMW, adminRoleMW) // Pass adminRoleMW here
 	categoryHandler.RegisterRoutes(v1, authMW, adminRoleMW)
 	listingHandler.RegisterRoutes(v1, authMW, adminRoleMW)
 
