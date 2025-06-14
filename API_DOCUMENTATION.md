@@ -127,6 +127,66 @@ Manages user profiles. User registration is now handled by the client applicatio
         ```
     *   `500 Internal Server Error`.
 
+### `GET /api/v1/users`
+
+*   **Description**: Retrieves a paginated list of users. Allows filtering by email, name, and role. This is an admin-only endpoint.
+*   **Auth**: Admin (Bearer Token) (Firebase ID Token)
+*   **Query Parameters**:
+    *   `page` (int, optional, default: 1): The page number for pagination.
+    *   `page_size` (int, optional, default: 10): The number of users per page.
+    *   `email` (string, optional): Filters users whose email contains the provided string (case-insensitive).
+    *   `name` (string, optional): Filters users whose first name or last name contains the provided string (case-insensitive).
+    *   `role` (string, optional): Filters users by exact role match (e.g., "user", "admin").
+*   **Headers**:
+    *   `Authorization: Bearer <FIREBASE_ID_TOKEN>` (Required, must be from an admin user)
+*   **Response**: `200 OK`
+    ```json
+    {
+        "message": "Users retrieved successfully.",
+        "data": [
+            {
+                "id": "a1b2c3d4-e5f6-7890-1234-567890abcdef",
+                "email": "admin@example.com",
+                "first_name": "Admin",
+                "last_name": "User",
+                "profile_picture_url": "http://example.com/admin.jpg",
+                "auth_provider": "firebase",
+                "is_email_verified": true,
+                "role": "admin",
+                "is_first_post_approved": true,
+                "created_at": "2023-01-10T09:00:00Z",
+                "updated_at": "2023-01-10T09:00:00Z",
+                "last_login_at": "2023-10-28T10:00:00Z"
+            },
+            {
+                "id": "b2c3d4e5-f6a7-8901-2345-678901bcdef0",
+                "email": "user1@example.com",
+                "first_name": "Regular",
+                "last_name": "UserOne",
+                "profile_picture_url": null,
+                "auth_provider": "firebase",
+                "is_email_verified": true,
+                "role": "user",
+                "is_first_post_approved": false,
+                "created_at": "2023-02-15T11:00:00Z",
+                "updated_at": "2023-02-15T11:00:00Z",
+                "last_login_at": "2023-10-27T12:00:00Z"
+            }
+        ],
+        "pagination": {
+            "current_page": 1,
+            "page_size": 10,
+            "total_records": 2,
+            "total_pages": 1
+        }
+    }
+    ```
+*   **Error Responses**:
+    *   `400 Bad Request`: If query parameters are of an invalid type (e.g., non-integer for `page`).
+    *   `401 Unauthorized`: If the token is missing, invalid, or not provided.
+    *   `403 Forbidden`: If the authenticated user is not an admin.
+    *   `500 Internal Server Error`: For unexpected server issues.
+
 ---
 ## Module: Categories
 Manages categories for listings.
