@@ -7,7 +7,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/joho/godotenv"
 	"github.com/spf13/viper"
 )
 
@@ -51,11 +50,11 @@ type Config struct {
 
 // Load attempts to load configuration from a .env file (if present) and environment variables.
 func Load() (*Config, error) {
-	if err := godotenv.Load(); err != nil {
-		if !os.IsNotExist(err) {
-			return nil, fmt.Errorf("error loading .env file: %w", err)
-		}
-	}
+	// if err := godotenv.Load(); err != nil {
+	// 	if !os.IsNotExist(err) {
+	// 		return nil, fmt.Errorf("error loading .env file: %w", err)
+	// 	}
+	// }
 
 	v := viper.New()
 
