@@ -20,12 +20,14 @@ services:
       retries: 5
 
   app:
+    env_file:
+      - .env
     build:
       context: .
       dockerfile: Dockerfile
     container_name: seattle_info_app_prod
     ports:
-      - "8082:8080" # Expose port 80 publicly (if no reverse proxy yet)
+      - "80:8080" # Expose port 80 publicly (if no reverse proxy yet)
     depends_on:
       postgres_db:
         condition: service_healthy
@@ -46,66 +48,6 @@ services:
 volumes:
   postgres_data_prod:
 
-environment:
-  # Server Configuration
-  GIN_MODE: prod
-  SERVER_PORT: 8082
-  SERVER_HOST: 0.0.0.0
-  SERVER_TIMEOUT_SECONDS: 30s
-  DB_HOST: localhost
-  DB_PORT: 5432
-  DB_USER: seattle_user
-  DB_PASSWORD: 1234567890
-  DB_NAME: seattle_info_dev
-  DB_SSL_MODE: disable
-  DB_TIMEZONE: UTC
-  DB_MAX_IDLE_CONNS: 10
-  DB_MAX_OPEN_CONNS: 100
-  DB_CONN_MAX_LIFETIME_MINUTES: 60m
-  # For golang-migrate CLI (ensure user/pass/db match above)
-  DB_SOURCE: postgresql://seattle_user:1234567890@postgres_db:5432/seattle_info_dev?sslmode=disable
-
-  # JWT Configuration
-  JWT_SECRET_KEY: jwt_secret_123
-  JWT_ACCESS_TOKEN_EXPIRY_MINUTES: 60m
-  JWT_REFRESH_TOKEN_EXPIRY_DAYS: 168h
-
-  # Logging Configuration
-  LOG_LEVEL: info
-  LOG_FORMAT: json
-
-  # Application Specific Configuration
-  DEFAULT_LISTING_LIFESPAN_DAYS: 10
-  MAX_LISTING_DISTANCE_KM: 50
-  FIRST_POST_APPROVAL_ACTIVE_MONTHS: 6
-
-  # Cron Jobs Configuration
-  LISTING_EXPIRY_JOB_SCHEDULE: "@daily"
-
-  # OAuth Configuration
-  # Google OAuth
-  GOOGLE_CLIENT_ID: YOUR_GOOGLE_CLIENT_ID.apps.googleusercontent.com
-  GOOGLE_CLIENT_SECRET: YOUR_GOOGLE_CLIENT_SECRET
-  GOOGLE_REDIRECT_URI: http://localhost:8080/api/v1/auth/google/callback
-
-  # Apple OAuth
-  APPLE_TEAM_ID: YOUR_APPLE_TEAM_ID
-  APPLE_CLIENT_ID: com.yourcompany.seattleinfo.webapp
-  APPLE_KEY_ID: YOUR_APPLE_KEY_ID
-  APPLE_PRIVATE_KEY_PATH: ./config/AuthKey_YOUR_KEY_ID.p8
-  APPLE_REDIRECT_URI: http://localhost:8080/api/v1/auth/apple/callback
-
-  # Cookie settings for OAuth state/nonce
-  OAUTH_COOKIE_DOMAIN: localhost
-  OAUTH_COOKIE_SECURE: false
-  OAUTH_COOKIE_HTTP_ONLY: true
-  OAUTH_COOKIE_SAME_SITE: Lax
-  OAUTH_STATE_COOKIE_NAME: oauth_state
-  OAUTH_NONCE_COOKIE_NAME: oauth_nonce
-  OAUTH_COOKIE_MAX_AGE_MINUTES: 10
-
-  FIREBASE_SERVICE_ACCOUNT_KEY_PATH: ./config/seattle-info-firebase-adminsdk-fbsvc-e9b7d3e139.json
-  FIREBASE_PROJECT_ID: seattle-info
 networks:
   seattle_info_net_prod:
     driver: bridge
