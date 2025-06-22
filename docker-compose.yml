@@ -1,0 +1,51 @@
+version: '3.8'
+
+services:
+  postgres_db:
+    image: postgis/postgis:15-3.3
+    container_name: seattle_info_postgres_prod
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: your_prod_user
+      POSTGRES_PASSWORD: your_prod_password
+      POSTGRES_DB: seattle_info_prod
+    volumes:
+      - postgres_data_prod:/var/lib/postgresql/data
+    networks:
+      - seattle_info_net_prod
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U your_prod_user -d seattle_info_prod"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: seattle_info_app_prod
+    ports:
+      - "80:8080" # Expose port 80 publicly (if no reverse proxy yet)
+    depends_on:
+      postgres_db:
+        condition: service_healthy
+    environment:
+      GIN_MODE: release
+      SERVER_PORT: 8080
+      DB_HOST: postgres_db
+      DB_PORT: 5432
+      DB_USER: your_prod_user
+      DB_PASSWORD: your_prod_password
+      DB_NAME: seattle_info_prod
+      DB_SSL_MODE: disable
+      DB_TIMEZONE: UTC
+      JWT_SECRET_KEY: your_prod_secret_key
+    networks:
+      - seattle_info_net_prod
+
+volumes:
+  postgres_data_prod:
+
+networks:
+  seattle_info_net_prod:
+    driver: bridge
