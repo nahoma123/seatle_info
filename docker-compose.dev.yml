@@ -50,38 +50,36 @@ services:
     depends_on:
       postgres_db: # Corrected way to specify service dependency
         condition: service_healthy # Wait for healthcheck to pass
+    env_file: # Ensure migrate service also uses .env.dev for DB_SOURCE by default
+      - ./.env.dev
     environment:
+      # DB_SOURCE will be taken from .env.dev.
+      # If passed via `docker compose run -e DB_SOURCE=...`, that would override.
       - DB_SOURCE=${DB_SOURCE}
 
   # Go application service (optional for now, can be run locally)
   # If you want to run the Go app in Docker during development:
-  # app:
-  #   build:
-  #     context: .
-  #     dockerfile: Dockerfile # We'll create this next
-  #   container_name: seattle_info_app_dev
-  #   ports:
-  #     - "${SERVER_PORT:-8080}:${SERVER_PORT:-8080}"
-  #   depends_on:
-  #     postgres_db:
-  #       condition: service_healthy
-  #   environment:
-  #     GIN_MODE: ${GIN_MODE:-debug}
-  #     SERVER_PORT: ${SERVER_PORT:-8080}
-  #     DB_HOST: postgres_db # Service name for Docker internal DNS
-  #     DB_PORT: 5432 # Internal port for postgres_db
-  #     DB_USER: ${DB_USER:-your_db_user}
-  #     DB_PASSWORD: ${DB_PASSWORD:-your_db_password}
-  #     DB_NAME: ${DB_NAME:-seattle_info_db}
-  #     DB_SSL_MODE: ${DB_SSL_MODE:-disable}
-  #     DB_TIMEZONE: ${DB_TIMEZONE:-UTC}
-  #     JWT_SECRET_KEY: ${JWT_SECRET_KEY}
-  #     # ... other env vars from .env
-  #   volumes:
-  #     - .:/app # Mount current directory to /app in container for hot-reloading (if using Air or similar)
-  #   networks:
-  #     - seattle_info_net_dev
-  #   # command: ["air", "-c", ".air.toml"] # Example if using Air for hot-reloading
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: seattle_info_app_dev
+    ports:
+      - "${SERVER_PORT:-8080}:${SERVER_PORT:-8080}" # SERVER_PORT will be sourced from .env.dev
+    depends_on:
+      postgres_db:
+        condition: service_healthy
+    env_file:
+      - ./.env.dev # Load development environment variables
+    volumes:
+      - .:/app # Mount current directory to /app in container for live code changes
+    networks:
+      - seattle_info_net_dev
+    # For development, we want to run the application using go run for faster iteration
+    # Ensure wire_gen.go is up to date (make wire)
+    command: ["go", "run", "./cmd/server/main.go", "./cmd/server/wire_gen.go"]
+    # If you prefer hot-reloading with a tool like Air:
+    # command: ["air", "-c", ".air.toml"] # Requires Air setup
 
 volumes:
   postgres_data_dev:

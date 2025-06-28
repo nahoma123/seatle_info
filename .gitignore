@@ -1,3 +1,5 @@
 config
 vendor
 .env
+.env.dev
+.env.prod

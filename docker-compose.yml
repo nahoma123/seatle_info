@@ -6,7 +6,7 @@ services:
     container_name: seattle_info_postgres_prod
     restart: unless-stopped
     env_file:
-      - .env
+      - .env.prod
     environment:
       POSTGRES_USER: ${DB_USER}
       POSTGRES_PASSWORD: ${DB_PASSWORD}
@@ -32,9 +32,13 @@ services:
       postgres_db:
         condition: service_healthy
     env_file:
-      - .env
+      - .env.prod
     volumes:
       - /home/ubuntu/seatle_info/config/firebase-key.json:/app/secret/firebase-key.json:ro
+      # If APPLE_PRIVATE_KEY_PATH in .env.prod points to a different file, add its mount here.
+      # For example, if APPLE_PRIVATE_KEY_PATH=/app/secret/AuthKey_PROD_APPLE_KEY.p8
+      # and the host path is /home/ubuntu/seatle_info/config/AuthKey_PROD_APPLE_KEY.p8
+      # - /home/ubuntu/seatle_info/config/AuthKey_PROD_APPLE_KEY.p8:/app/secret/AuthKey_PROD_APPLE_KEY.p8:ro
     networks:
       - seattle_info_net_prod
 

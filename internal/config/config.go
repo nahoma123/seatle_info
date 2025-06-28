@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/joho/godotenv"
 	"github.com/spf13/viper"
 )
 
@@ -50,11 +51,17 @@ type Config struct {
 
 // Load attempts to load configuration from a .env file (if present) and environment variables.
 func Load() (*Config, error) {
-	// if err := godotenv.Load(); err != nil {
-	// 	if !os.IsNotExist(err) {
-	// 		return nil, fmt.Errorf("error loading .env file: %w", err)
-	// 	}
-	// }
+	// Try loading .env.dev first
+	if err := godotenv.Load(".env.dev"); err != nil {
+		// If .env.dev doesn't exist, try loading .env
+		if err := godotenv.Load(); err != nil {
+			// If neither .env.dev nor .env exists, and the error is something other than "file does not exist", return error
+			// It's okay if .env files don't exist, as config can be fully provided by environment variables.
+			if !os.IsNotExist(err) {
+				return nil, fmt.Errorf("error loading .env file: %w", err)
+			}
+		}
+	}
 
 	v := viper.New()
 
