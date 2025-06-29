@@ -70,7 +70,6 @@ jobs:
 
     steps:
       - name: Set up SSH key
-        # We are removing ssh-keyscan and will disable host key checking instead.
         run: |
           mkdir -p ~/.ssh
           echo "${SSH_PRIVATE_KEY}" > ~/.ssh/id_rsa
@@ -78,22 +77,23 @@ jobs:
 
       - name: Copy Firebase key to server
         run: |
-          # THE FIX: Add SSH options to ignore host key checking.
+          # THE FIX: This line was missing. It creates the file before we try to copy it.
+          echo "${FIREBASE_ADMIN_SDK_JSON}" > ./firebase-key-to-copy.json
+
           scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i ~/.ssh/id_rsa ./firebase-key-to-copy.json ${SERVER_USER}@${SERVER_HOST}:${FIREBASE_KEY_PATH_ON_SERVER}
           rm ./firebase-key-to-copy.json
 
       - name: SSH, Migrate, and Deploy on Server
         run: |
-          # THE FIX: Add SSH options to ignore host key checking.
-          ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i ~/.ssh/id_rsa ${SERVER_USER}@${SERVER_HOST} << 'EOF'
-            set -e
-
-            # The rest of your script remains the same.
-            # It now uses variables exported by the runner.
+          # THE FIX: Reverted to the correct 'bash -s' method for passing variables into the script.
+          ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i ~/.ssh/id_rsa ${SERVER_USER}@${SERVER_HOST} "
             export GHCR_USER='${{ env.GHCR_USER }}'
             export GHCR_TOKEN='${{ env.GHCR_TOKEN }}'
             export IMAGE_NAME='${{ env.IMAGE_NAME }}'
             export DB_SOURCE='${{ env.DB_SOURCE }}'
+            bash -s
+          " << 'EOF'
+            set -e
 
             cd ~/seatle_info
 
