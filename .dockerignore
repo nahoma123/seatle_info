@@ -1,0 +1,39 @@
+# Ignore Git directory
+.git
+
+# Ignore .env file (credentials should be passed via environment variables)
+.env
+
+# Ignore VSCode specific files
+.vscode/
+
+# Ignore test files and directories from the build context if not needed for production build
+# tests/
+
+# Ignore local development files or dumps
+seattle_info.dump
+
+# Ignore any local Go build artifacts or vendor directories if not using go modules
+# bin/
+# vendor/
+
+# Ignore Markdown files (documentation)
+*.md
+
+# Ignore docker-compose files if they are not needed in the image
+docker-compose.yml
+docker-compose.dev.yml
+
+# Ignore Makefile
+Makefile
+
+# Ignore .gitignore and .dockerignore itself (though .dockerignore won't be copied anyway)
+.gitignore
+.dockerignore
+
+# If you have other specific large files or directories that are not needed for the build, add them here.
+# For example, if you have a large dataset in your repo that's not part of the app:
+# large_dataset/
+
+# Ignore .envrc
+.envrc
