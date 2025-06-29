@@ -1,8 +1,10 @@
 package integration
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"seattle_info_backend/internal/common"
@@ -467,3 +469,105 @@ func clearTestData(t *testing.T, router http.Handler, listingIDs []uuid.UUID, us
 // implemented based on your project's specific testing infrastructure.
 // The integration tests rely on these helpers to interact with a test instance
 // of your application.
+
+func TestCreateListingAPI_Multipart_WithNegativeLocation(t *testing.T) {
+	router, cleanup := setupTestServer(t) // Placeholder. Must provide a router that handles /api/v1/listings
+	defer cleanup()
+
+	// 1. Seed User and Category (using placeholders, ensure these work in your test env)
+	testUser, err := seedUserIfNotExists(router, "multipartneguser@test.com", "password123", "MultipartNeg", "User")
+	assert.NoError(t, err)
+	assert.NotNil(t, testUser, "Test user should be seeded")
+
+	categoryData, err := seedCategoryIfNotExists(router, "Test Category Multipart Negative", "test-cat-mp-neg")
+	assert.NoError(t, err)
+	assert.NotNil(t, categoryData, "Test category should be seeded")
+
+	// 2. Construct Multipart Form Data
+	lat := -47.6062
+	lon := -122.3321 // Key: Negative longitude
+	title := "Listing Multipart Negative Location"
+	description := "Test listing with negative lat/lon via multipart form."
+
+	var requestBody bytes.Buffer
+	writer := multipart.NewWriter(&requestBody)
+
+	// Populate required fields for CreateListingRequest based on its definition in model.go
+	// Ensure all `binding:"required"` fields are present.
+	// Example: CategoryID, Title, Description are typically required.
+	_ = writer.WriteField("category_id", categoryData.ID.String())
+	_ = writer.WriteField("title", title)
+	_ = writer.WriteField("description", description)
+	_ = writer.WriteField("latitude", fmt.Sprintf("%f", lat))
+	_ = writer.WriteField("longitude", fmt.Sprintf("%f", lon))
+	// Add other simple fields if they are mandatory in CreateListingRequest
+	// E.g., if `ContactName` was mandatory: _ = writer.WriteField("contact_name", "Test Contact")
+
+	// Note: Nested JSON objects (like BabysittingDetails) if required, would typically be sent
+	// as a JSON string in a field, e.g., writer.WriteField("babysitting_details", `{"languages_spoken":["english"]}`)
+	// and then unmarshalled manually in the handler or service.
+	// The test here focuses on direct multipart field binding for lat/lon.
+
+	err = writer.Close()
+	assert.NoError(t, err, "Closing multipart writer failed")
+
+	// 3. Make Authenticated POST Request
+	rr := httptest.NewRecorder()
+	// Ensure the path matches your router setup, e.g., "/api/v1/listings"
+	req, _ := http.NewRequest("POST", "/api/v1/listings", &requestBody)
+
+	// --- IMPORTANT: Authentication Handling ---
+	// The following is a placeholder for how you might handle authentication in tests.
+	// Your actual implementation will depend on your auth middleware and test setup.
+	// If your `setupTestServer` provides a router where auth is bypassed or uses a test token,
+	// this might work. Otherwise, you need to obtain a valid token for `testUser`.
+	// Example:
+	// token := getAuthTokenForTest(t, router, testUser.Email, "password123") // You'd need this helper
+	// req.Header.Set("Authorization", "Bearer "+token)
+	// Or, if your test middleware injects user ID based on a test header:
+	// req.Header.Set("X-Test-User-ID", testUser.ID.String())
+	// For now, this test assumes the request will be processed as if authenticated.
+	// If not, you'll likely get a 401 or 403 error.
+
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+
+	router.ServeHTTP(rr, req)
+
+	// 4. Assert HTTP Status
+	// If auth is not handled, change expected status to http.StatusUnauthorized or http.StatusForbidden.
+	assert.Equal(t, http.StatusCreated, rr.Code, "Expected status 201 Created. Response Body: %s", rr.Body.String())
+
+	// 5. Unmarshal and Assert Response Data (only if StatusCreated)
+	if rr.Code == http.StatusCreated {
+		var responseBody struct {
+			Status  string                    `json:"status"`
+			Message string                    `json:"message"`
+			Data    listing.ListingResponse   `json:"data"` // Assuming this is your response struct
+		}
+		err = json.Unmarshal(rr.Body.Bytes(), &responseBody)
+		assert.NoError(t, err, "Failed to unmarshal response body: %s", rr.Body.String())
+
+		assert.Equal(t, "success", responseBody.Status, "Response status should be 'success'")
+		assert.NotEmpty(t, responseBody.Data.ID, "Listing ID should not be empty in response")
+		assert.Equal(t, title, responseBody.Data.Title, "Listing title in response does not match")
+
+		// Assert Latitude and Longitude
+		assert.NotNil(t, responseBody.Data.Latitude, "Latitude should not be nil in response")
+		assert.NotNil(t, responseBody.Data.Longitude, "Longitude should not be nil in response")
+		if responseBody.Data.Latitude != nil && responseBody.Data.Longitude != nil {
+			assert.InDelta(t, lat, *responseBody.Data.Latitude, 0.00001, "Latitude in response does not match expected")
+			assert.InDelta(t, lon, *responseBody.Data.Longitude, 0.00001, "Longitude in response does not match expected")
+		}
+
+		// Assert PostGISPoint (Location field in ListingResponse)
+		// This assumes your service logic correctly converts lat/lon to the PostGISPoint
+		// and it's part of the response model.
+		assert.NotNil(t, responseBody.Data.Location, "Location (PostGISPoint) should not be nil in response")
+		if responseBody.Data.Location != nil {
+			assert.InDelta(t, lat, responseBody.Data.Location.Lat, 0.00001, "Latitude in Location (PostGISPoint) does not match")
+			assert.InDelta(t, lon, responseBody.Data.Location.Lon, 0.00001, "Longitude in Location (PostGISPoint) does not match")
+		}
+		// Optionally, clean up the created listing
+		// clearTestData(t, router, []uuid.UUID{responseBody.Data.ID}, testUser.ID, categoryData.ID)
+	}
+}

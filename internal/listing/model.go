@@ -203,10 +203,10 @@ type CreateListingRequest struct {
 	City               *string                                 `json:"city,omitempty" binding:"omitempty,max=100"`
 	State              *string                                 `json:"state,omitempty" binding:"omitempty,max=50"`
 	ZipCode            *string                                 `json:"zip_code,omitempty" binding:"omitempty,max=20"`
-	Latitude           *float64                                `json:"latitude,omitempty" binding:"omitempty,latitude"`
-	Longitude          *float64                                `json:"longitude,omitempty" binding:"omitempty,longitude"`
-	BabysittingDetails *CreateListingBabysittingDetailsRequest `json:"babysitting_details,omitempty"`
-	HousingDetails     *CreateListingHousingDetailsRequest     `json:"housing_details,omitempty"`
+	Latitude           *float64                                `form:"latitude,omitempty" binding:"omitempty,latitude"`
+	Longitude          *float64                                `form:"longitude,omitempty" binding:"omitempty,longitude"`
+	BabysittingDetails *CreateListingBabysittingDetailsRequest `json:"babysitting_details,omitempty"` // This remains JSON as it's a nested object expected to be sent as a JSON string in a form field
+	HousingDetails     *CreateListingHousingDetailsRequest     `json:"housing_details,omitempty"` // Same as above
 	EventDetails       *CreateListingEventDetailsRequest       `json:"event_details,omitempty"`
 	// Images are handled via multipart/form-data in the handler, not directly in this struct for JSON binding.
 	// The handler will need to manually process c.Request.MultipartForm.File["images"]
@@ -225,11 +225,11 @@ type UpdateListingRequest struct {
 	City               *string                                 `json:"city,omitempty" binding:"omitempty,max=100"`
 	State              *string                                 `json:"state,omitempty" binding:"omitempty,max=50"`
 	ZipCode            *string                                 `json:"zip_code,omitempty" binding:"omitempty,max=20"`
-	Latitude           *float64                                `json:"latitude,omitempty" binding:"omitempty,latitude"`
-	Longitude          *float64                                `json:"longitude,omitempty" binding:"omitempty,longitude"`
-	BabysittingDetails *CreateListingBabysittingDetailsRequest `json:"babysitting_details,omitempty"`
-	HousingDetails     *CreateListingHousingDetailsRequest     `json:"housing_details,omitempty"`
-	EventDetails       *CreateListingEventDetailsRequest       `json:"event_details,omitempty"`
+	Latitude           *float64                                `form:"latitude,omitempty" binding:"omitempty,latitude"`
+	Longitude          *float64                                `form:"longitude,omitempty" binding:"omitempty,longitude"`
+	BabysittingDetails *CreateListingBabysittingDetailsRequest `json:"babysitting_details,omitempty"` // This remains JSON as it's a nested object expected to be sent as a JSON string in a form field
+	HousingDetails     *CreateListingHousingDetailsRequest     `json:"housing_details,omitempty"` // Same as above
+	EventDetails       *CreateListingEventDetailsRequest       `json:"event_details,omitempty"` // Same as above
 	// Images are handled via multipart/form-data in the handler for new uploads.
 	// Existing images to remove might be specified by their IDs.
 	RemoveImageIDs []uuid.UUID `json:"remove_image_ids,omitempty"`
