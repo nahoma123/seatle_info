@@ -74,10 +74,39 @@ jobs:
     steps:
       - name: Set up SSH key and known_hosts
         run: |
+          echo "--- STARTING DIAGNOSTICS ---"
+
+          echo "Step 1: Checking if the SERVER_HOST variable is empty."
+          if [ -z "$SERVER_HOST" ]; then
+            echo "::error::RESULT: The SERVER_HOST variable is completely empty or not set."
+            echo "This confirms the 'SERVER_HOST' secret is not being loaded into the job."
+            echo "Please double-check your Environment Secrets in the GitHub UI."
+            exit 1
+          else
+            echo "RESULT: The SERVER_HOST variable is NOT empty."
+            echo "The value is: [${SERVER_HOST}]"
+          fi
+
+          echo ""
+          echo "Step 2: Testing network connectivity to the host on port 22."
+          # nc (netcat) is a tool to test connections. -z checks if the port is open.
+          # The timeout of 5 seconds prevents the job from hanging.
+          if nc -w 5 -z "$SERVER_HOST" 22; then
+            echo "RESULT: Successfully connected to ${SERVER_HOST} on port 22."
+          else
+            echo "::error::RESULT: FAILED to connect to ${SERVER_HOST} on port 22."
+            echo "This means the secret is loaded correctly, but a firewall or security group on your EC2 instance is blocking the connection from GitHub Actions."
+            exit 1
+          fi
+
+          echo ""
+          echo "Step 3: Proceeding with SSH setup."
           mkdir -p ~/.ssh
-          echo "$SSH_PRIVATE_KEY" > ~/.ssh/id_rsa
+          echo "${SSH_PRIVATE_KEY}" > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
           ssh-keyscan -H "$SERVER_HOST" >> ~/.ssh/known_hosts
+
+          echo "--- DIAGNOSTICS COMPLETE ---"
 
       - name: Copy Firebase key to server
         run: |
