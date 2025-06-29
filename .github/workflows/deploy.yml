@@ -9,6 +9,8 @@ jobs:
   deploy:
     name: Deploy to EC2 instance
     runs-on: ubuntu-latest
+    environment: SERVER_HOST  # <-- THIS IS THE LINE YOU ARE MISSING
+
 
     steps:
       - name: Checkout code
