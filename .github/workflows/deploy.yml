@@ -1,19 +1,62 @@
-name: Deploy to EC2
+name: Build and Deploy to EC2 via GHCR
 
 on:
   push:
     branches:
-      - main # Or your default branch, e.g., master
+      - main # Or your default branch
+
+env:
+  # Replace with your GitHub username and repository name
+  # e.g., ghcr.io/nahoma123/seatle_info
+  IMAGE_NAME: ghcr.io/YOUR_GITHUB_USERNAME/YOUR_REPOSITORY_NAME
 
 jobs:
-  deploy:
-    name: Deploy to EC2 instance
+  build-and-push-image:
+    name: Build Docker image and push to GHCR
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write # Required to push to GHCR
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }} # Your GitHub username
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata (tags, labels) for Docker
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE_NAME }}
+          tags: |
+            type=sha # Will create a tag like ghcr.io/user/repo:commit-sha
+            type=raw,value=latest,enable={{is_default_branch}} # Tag 'latest' for default branch
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  deploy-to-ec2:
+    name: Deploy to EC2 instance
+    runs-on: ubuntu-latest
+    needs: build-and-push-image # Run only after the image is built and pushed
+
+    steps:
       - name: Set up SSH key and known_hosts
         env:
           SSH_PRIVATE_KEY: ${{ secrets.SERVER_SSH_PRIVATE_KEY }}
@@ -24,7 +67,7 @@ jobs:
           chmod 600 ~/.ssh/id_rsa
           ssh-keyscan -H "$SERVER_HOST" >> ~/.ssh/known_hosts
 
-      - name: Copy Firebase key to server
+      - name: Copy Firebase key to server (if needed at runtime)
         env:
           SERVER_HOST: ${{ secrets.SERVER_HOST }}
           SERVER_USER: ${{ secrets.SERVER_USER }}
@@ -33,15 +76,37 @@ jobs:
         run: |
           echo "$FIREBASE_ADMIN_SDK_JSON_CONTENT" > ./firebase-key-to-copy.json
           scp -i ~/.ssh/id_rsa ./firebase-key-to-copy.json ${SERVER_USER}@${SERVER_HOST}:${FIREBASE_KEY_PATH_ON_SERVER}
-          rm ./firebase-key-to-copy.json # Clean up the temporary key file
+          rm ./firebase-key-to-copy.json # Clean up
 
-      - name: SSH into server, pull changes, and restart docker-compose
+      - name: SSH into server, pull image, and restart docker-compose
         env:
           SERVER_HOST: ${{ secrets.SERVER_HOST }}
           SERVER_USER: ${{ secrets.SERVER_USER }}
+          GHCR_IMAGE_NAME: ${{ env.IMAGE_NAME }}
+          # Using github.actor (username of who initiated the workflow) for docker login on server.
+          # GITHUB_TOKEN is passed to authorize the pull from GHCR.
+          GHCR_USER: ${{ github.actor }}
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          ssh -i ~/.ssh/id_rsa ${SERVER_USER}@${SERVER_HOST} << 'EOF'
-            cd ~/seatle_info
-            git pull
-            sudo docker-compose -f docker-compose.yml up --build -d
+          ssh -i ~/.ssh/id_rsa ${SERVER_USER}@${SERVER_HOST} << EOF
+            cd ~/seatle_info  # Or your project directory on the server
+
+            # Log in to GHCR to pull the image
+            echo "Logging into GHCR..."
+            echo "${GHCR_TOKEN}" | sudo docker login ghcr.io -u "${GHCR_USER}" --password-stdin
+
+            # Pull the latest image (using the 'latest' tag)
+            echo "Pulling latest image from GHCR..."
+            sudo docker pull ${GHCR_IMAGE_NAME}:latest
+
+            # Restart docker-compose services
+            # Assumes your docker-compose.yml on the server now uses:
+            # image: ${{ env.IMAGE_NAME }}:latest
+            # for the app service, instead of "build: ."
+            echo "Starting services with docker-compose..."
+            sudo docker-compose -f docker-compose.yml up -d
+
+            # Clean up old, unused Docker images
+            echo "Pruning old Docker images..."
+            sudo docker image prune -af
           EOF
