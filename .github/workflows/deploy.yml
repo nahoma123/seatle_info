@@ -1,0 +1,47 @@
+name: Deploy to EC2
+
+on:
+  push:
+    branches:
+      - main # Or your default branch, e.g., master
+
+jobs:
+  deploy:
+    name: Deploy to EC2 instance
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up SSH key and known_hosts
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SERVER_SSH_PRIVATE_KEY }}
+          SERVER_HOST: ${{ secrets.SERVER_HOST }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "$SSH_PRIVATE_KEY" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H "$SERVER_HOST" >> ~/.ssh/known_hosts
+
+      - name: Copy Firebase key to server
+        env:
+          SERVER_HOST: ${{ secrets.SERVER_HOST }}
+          SERVER_USER: ${{ secrets.SERVER_USER }}
+          FIREBASE_ADMIN_SDK_JSON_CONTENT: ${{ secrets.FIREBASE_ADMIN_SDK_JSON }}
+          FIREBASE_KEY_PATH_ON_SERVER: ${{ secrets.FIREBASE_KEY_PATH_ON_SERVER }}
+        run: |
+          echo "$FIREBASE_ADMIN_SDK_JSON_CONTENT" > ./firebase-key-to-copy.json
+          scp -i ~/.ssh/id_rsa ./firebase-key-to-copy.json ${SERVER_USER}@${SERVER_HOST}:${FIREBASE_KEY_PATH_ON_SERVER}
+          rm ./firebase-key-to-copy.json # Clean up the temporary key file
+
+      - name: SSH into server, pull changes, and restart docker-compose
+        env:
+          SERVER_HOST: ${{ secrets.SERVER_HOST }}
+          SERVER_USER: ${{ secrets.SERVER_USER }}
+        run: |
+          ssh -i ~/.ssh/id_rsa ${SERVER_USER}@${SERVER_HOST} << 'EOF'
+            cd ~/seatle_info
+            git pull
+            sudo docker-compose -f docker-compose.yml up --build -d
+          EOF
