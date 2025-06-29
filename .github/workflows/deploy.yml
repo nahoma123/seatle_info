@@ -59,82 +59,63 @@ jobs:
     environment: SERVER_HOST
 
     env:
-      # Secrets from your "SERVER_HOST" GitHub Environment
       SSH_PRIVATE_KEY: ${{ secrets.SERVER_SSH_PRIVATE_KEY }}
       SERVER_HOST: ${{ secrets.SERVER_HOST }}
       SERVER_USER: ${{ secrets.SERVER_USER }}
       FIREBASE_ADMIN_SDK_JSON: ${{ secrets.FIREBASE_ADMIN_SDK_JSON }}
       FIREBASE_KEY_PATH_ON_SERVER: ${{ secrets.FIREBASE_KEY_PATH_ON_SERVER }}
-      DB_SOURCE: ${{ secrets.DB_SOURCE }} # <-- This now reads the secret you just added
-
-      # Variables needed for GHCR login on the remote server
+      DB_SOURCE: ${{ secrets.DB_SOURCE }}
       GHCR_USER: ${{ github.actor }}
       GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
     steps:
       - name: Set up SSH key and known_hosts
         run: |
-          echo "--- FINAL DIAGNOSTICS FOR SSH KEY ---"
-          
-          echo "Step 1: Check the private key secret content (safely)."
-          if [ -z "${SSH_PRIVATE_KEY}" ]; then
-            echo "::error::FAILURE: The SERVER_SSH_PRIVATE_KEY secret is EMPTY."
-            exit 1
-          fi
-          echo "Key secret is not empty. Length: ${#SSH_PRIVATE_KEY}"
+          # THE FIX: Trim whitespace/invisible chars from the host variable
+          SANITIZED_HOST=$(echo "$SERVER_HOST" | xargs)
 
-          echo "Step 2: Create the .ssh directory."
+          echo "Original Host Value: [${SERVER_HOST}]"
+          echo "Sanitized Host Value: [${SANITIZED_HOST}]"
+
           mkdir -p ~/.ssh
-          echo "OK: Directory created."
-          
-          echo "Step 3: Write the private key to id_rsa file."
           echo "${SSH_PRIVATE_KEY}" > ~/.ssh/id_rsa
-          echo "OK: Key written to file."
-          
-          echo "Step 4: Set permissions on the key file."
           chmod 600 ~/.ssh/id_rsa
-          echo "OK: Permissions set to 600."
-          
-          echo "Step 5: Run ssh-keyscan to get the server's public key."
-          ssh-keyscan -H "$SERVER_HOST" >> ~/.ssh/known_hosts
-          echo "OK: ssh-keyscan successful."
-          
-          echo "--- DIAGNOSTICS COMPLETE ---"
-
+          # Use the sanitized variable
+          ssh-keyscan -H "$SANITIZED_HOST" >> ~/.ssh/known_hosts
 
       - name: Copy Firebase key to server
         run: |
+          # THE FIX: Trim whitespace/invisible chars from the host variable
+          SANITIZED_HOST=$(echo "$SERVER_HOST" | xargs)
+
           echo "$FIREBASE_ADMIN_SDK_JSON" > ./firebase-key-to-copy.json
-          scp -i ~/.ssh/id_rsa ./firebase-key-to-copy.json ${SERVER_USER}@${SERVER_HOST}:${FIREBASE_KEY_PATH_ON_SERVER}
+          # Use the sanitized variable
+          scp -i ~/.ssh/id_rsa ./firebase-key-to-copy.json ${SERVER_USER}@${SANITIZED_HOST}:${FIREBASE_KEY_PATH_ON_SERVER}
           rm ./firebase-key-to-copy.json
 
       - name: SSH, Migrate, and Deploy on Server
         run: |
-          # This command now passes your runner's variables into the EC2 server
-          ssh -i ~/.ssh/id_rsa ${SERVER_USER}@${SERVER_HOST} "
+          # THE FIX: Trim whitespace/invisible chars from the host variable
+          SANITIZED_HOST=$(echo "$SERVER_HOST" | xargs)
+
+          # Use the sanitized variable
+          ssh -i ~/.ssh/id_rsa ${SERVER_USER}@${SANITIZED_HOST} "
             export GHCR_USER='${GHCR_USER}'
             export GHCR_TOKEN='${GHCR_TOKEN}'
             export IMAGE_NAME='${IMAGE_NAME}'
             export DB_SOURCE='${DB_SOURCE}'
             bash -s
           " << 'EOF'
-            # This script runs on the EC2 server, but now has access to the variables
             set -e
-
             cd ~/seatle_info
-
             echo "Logging into GHCR..."
             echo "$GHCR_TOKEN" | sudo docker login ghcr.io -u "$GHCR_USER" --password-stdin
-
             echo "Pulling latest image from GHCR..."
             sudo docker pull ${IMAGE_NAME}:latest
-
             echo "Running database migrations..."
             sudo docker-compose -f docker-compose.yml run --rm migrate migrate -path /migrations -database "$DB_SOURCE" up
-
             echo "Starting services with docker-compose..."
             sudo docker-compose -f docker-compose.yml up -d
-
             echo "Pruning old Docker images..."
             sudo docker image prune -af
           EOF
