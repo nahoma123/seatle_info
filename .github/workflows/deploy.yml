@@ -8,7 +8,7 @@ on:
 env:
   # Replace with your GitHub username and repository name
   # e.g., ghcr.io/nahoma123/seatle_info
-  IMAGE_NAME: ghcr.io/YOUR_GITHUB_USERNAME/YOUR_REPOSITORY_NAME
+  IMAGE_NAME: ghcr.io/nahoma123/seatle_info
   # SERVER_HOST is now defined here for global use if needed,
   # but also explicitly in steps for clarity where used directly by scripts.
   SERVER_HOST_GLOBAL: ${{ secrets.SERVER_HOST }} # Using a different name to avoid conflict if a step redefines
