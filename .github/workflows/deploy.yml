@@ -69,53 +69,46 @@ jobs:
       GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
     steps:
-      - name: Set up SSH key and known_hosts
+      - name: Set up SSH key
+        # We are removing ssh-keyscan and will disable host key checking instead.
         run: |
-          # THE FIX: Trim whitespace/invisible chars from the host variable
-          SANITIZED_HOST=$(echo "$SERVER_HOST" | xargs)
-
-          echo "Original Host Value: [${SERVER_HOST}]"
-          echo "Sanitized Host Value: [${SANITIZED_HOST}]"
-
           mkdir -p ~/.ssh
           echo "${SSH_PRIVATE_KEY}" > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
-          # Use the sanitized variable
-          ssh-keyscan -H "$SANITIZED_HOST" >> ~/.ssh/known_hosts
 
       - name: Copy Firebase key to server
         run: |
-          # THE FIX: Trim whitespace/invisible chars from the host variable
-          SANITIZED_HOST=$(echo "$SERVER_HOST" | xargs)
-
-          echo "$FIREBASE_ADMIN_SDK_JSON" > ./firebase-key-to-copy.json
-          # Use the sanitized variable
-          scp -i ~/.ssh/id_rsa ./firebase-key-to-copy.json ${SERVER_USER}@${SANITIZED_HOST}:${FIREBASE_KEY_PATH_ON_SERVER}
+          # THE FIX: Add SSH options to ignore host key checking.
+          scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i ~/.ssh/id_rsa ./firebase-key-to-copy.json ${SERVER_USER}@${SERVER_HOST}:${FIREBASE_KEY_PATH_ON_SERVER}
           rm ./firebase-key-to-copy.json
 
       - name: SSH, Migrate, and Deploy on Server
         run: |
-          # THE FIX: Trim whitespace/invisible chars from the host variable
-          SANITIZED_HOST=$(echo "$SERVER_HOST" | xargs)
-
-          # Use the sanitized variable
-          ssh -i ~/.ssh/id_rsa ${SERVER_USER}@${SANITIZED_HOST} "
-            export GHCR_USER='${GHCR_USER}'
-            export GHCR_TOKEN='${GHCR_TOKEN}'
-            export IMAGE_NAME='${IMAGE_NAME}'
-            export DB_SOURCE='${DB_SOURCE}'
-            bash -s
-          " << 'EOF'
+          # THE FIX: Add SSH options to ignore host key checking.
+          ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i ~/.ssh/id_rsa ${SERVER_USER}@${SERVER_HOST} << 'EOF'
             set -e
+
+            # The rest of your script remains the same.
+            # It now uses variables exported by the runner.
+            export GHCR_USER='${{ env.GHCR_USER }}'
+            export GHCR_TOKEN='${{ env.GHCR_TOKEN }}'
+            export IMAGE_NAME='${{ env.IMAGE_NAME }}'
+            export DB_SOURCE='${{ env.DB_SOURCE }}'
+
             cd ~/seatle_info
+
             echo "Logging into GHCR..."
             echo "$GHCR_TOKEN" | sudo docker login ghcr.io -u "$GHCR_USER" --password-stdin
+
             echo "Pulling latest image from GHCR..."
             sudo docker pull ${IMAGE_NAME}:latest
+
             echo "Running database migrations..."
             sudo docker-compose -f docker-compose.yml run --rm migrate migrate -path /migrations -database "$DB_SOURCE" up
+
             echo "Starting services with docker-compose..."
             sudo docker-compose -f docker-compose.yml up -d
+
             echo "Pruning old Docker images..."
             sudo docker image prune -af
           EOF
