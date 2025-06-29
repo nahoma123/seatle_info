@@ -85,7 +85,6 @@ jobs:
 
       - name: SSH, Migrate, and Deploy on Server
         run: |
-          # THE FIX: Reverted to the correct 'bash -s' method for passing variables into the script.
           ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i ~/.ssh/id_rsa ${SERVER_USER}@${SERVER_HOST} "
             export GHCR_USER='${{ env.GHCR_USER }}'
             export GHCR_TOKEN='${{ env.GHCR_TOKEN }}'
@@ -94,6 +93,11 @@ jobs:
             bash -s
           " << 'EOF'
             set -e
+
+            # THE FIX: Restart Docker to ensure it's in a clean state and give the system a moment.
+            echo "Restarting Docker daemon to ensure a clean state..."
+            sudo systemctl restart docker
+            sleep 5 # Wait 5 seconds for the daemon to be ready.
 
             cd ~/seatle_info
 
