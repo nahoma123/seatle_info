@@ -8,7 +8,11 @@ on:
 env:
   # Replace with your GitHub username and repository name
   # e.g., ghcr.io/nahoma123/seatle_info
-  IMAGE_NAME: ghcr.io/nahoma123/seatle_info
+  IMAGE_NAME: ghcr.io/YOUR_GITHUB_USERNAME/YOUR_REPOSITORY_NAME
+  # SERVER_HOST is now defined here for global use if needed,
+  # but also explicitly in steps for clarity where used directly by scripts.
+  SERVER_HOST_GLOBAL: ${{ secrets.SERVER_HOST }} # Using a different name to avoid conflict if a step redefines
+
 jobs:
   build-and-push-image:
     name: Build Docker image and push to GHCR
@@ -59,6 +63,7 @@ jobs:
       - name: Set up SSH key and known_hosts
         env:
           SSH_PRIVATE_KEY: ${{ secrets.SERVER_SSH_PRIVATE_KEY }}
+          # Explicitly making SERVER_HOST available to this script
           SERVER_HOST: ${{ secrets.SERVER_HOST }}
         run: |
           mkdir -p ~/.ssh
@@ -68,7 +73,7 @@ jobs:
 
       - name: Copy Firebase key to server (if needed at runtime)
         env:
-          SERVER_HOST: ${{ secrets.SERVER_HOST }}
+          SERVER_HOST: ${{ secrets.SERVER_HOST }} # Explicitly making SERVER_HOST available
           SERVER_USER: ${{ secrets.SERVER_USER }}
           FIREBASE_ADMIN_SDK_JSON_CONTENT: ${{ secrets.FIREBASE_ADMIN_SDK_JSON }}
           FIREBASE_KEY_PATH_ON_SERVER: ${{ secrets.FIREBASE_KEY_PATH_ON_SERVER }}
@@ -77,35 +82,37 @@ jobs:
           scp -i ~/.ssh/id_rsa ./firebase-key-to-copy.json ${SERVER_USER}@${SERVER_HOST}:${FIREBASE_KEY_PATH_ON_SERVER}
           rm ./firebase-key-to-copy.json # Clean up
 
-      - name: SSH into server, pull image, and restart docker-compose
+      - name: SSH, Migrate, Deploy on Server
         env:
-          SERVER_HOST: ${{ secrets.SERVER_HOST }}
+          SERVER_HOST: ${{ secrets.SERVER_HOST }} # Explicitly making SERVER_HOST available
           SERVER_USER: ${{ secrets.SERVER_USER }}
           GHCR_IMAGE_NAME: ${{ env.IMAGE_NAME }}
-          # Using github.actor (username of who initiated the workflow) for docker login on server.
-          # GITHUB_TOKEN is passed to authorize the pull from GHCR.
           GHCR_USER: ${{ github.actor }}
           GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           ssh -i ~/.ssh/id_rsa ${SERVER_USER}@${SERVER_HOST} << EOF
+            set -e # Exit immediately if a command exits with a non-zero status.
+
             cd ~/seatle_info  # Or your project directory on the server
 
-            # Log in to GHCR to pull the image
             echo "Logging into GHCR..."
             echo "${GHCR_TOKEN}" | sudo docker login ghcr.io -u "${GHCR_USER}" --password-stdin
 
-            # Pull the latest image (using the 'latest' tag)
             echo "Pulling latest image from GHCR..."
             sudo docker pull ${GHCR_IMAGE_NAME}:latest
 
-            # Restart docker-compose services
-            # Assumes your docker-compose.yml on the server now uses:
-            # image: ${{ env.IMAGE_NAME }}:latest
-            # for the app service, instead of "build: ."
+            echo "Running database migrations..."
+            # Ensure your docker-compose.yml on the server has a 'migrate' service
+            # and DB_SOURCE is available in its environment (e.g., from .env file)
+            sudo docker-compose -f docker-compose.yml run --rm migrate migrate -path /migrations -database "\$DB_SOURCE" up
+            # Note: Escaped $DB_SOURCE as "\$DB_SOURCE" because the heredoc is single-quoted for the outer EOF.
+            # This means variable expansion for $DB_SOURCE should happen on the server side.
+            # If DB_SOURCE itself needs to be passed from GitHub Secrets (not recommended for DB credentials),
+            # the heredoc quoting and variable passing would need to be different.
+
             echo "Starting services with docker-compose..."
             sudo docker-compose -f docker-compose.yml up -d
 
-            # Clean up old, unused Docker images
             echo "Pruning old Docker images..."
             sudo docker image prune -af
           EOF
