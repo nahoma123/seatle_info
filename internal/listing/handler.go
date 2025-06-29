@@ -11,11 +11,31 @@ import (
 	"seattle_info_backend/internal/middleware"
 
 	"github.com/gin-gonic/gin"
+	"fmt"
+	"strconv"
+
+	"github.com/gin-gonic/gin"
 	"github.com/gin-gonic/gin/binding"
 	"github.com/go-playground/validator/v10"
 	"github.com/google/uuid"
 	"go.uber.org/zap"
 )
+
+// Helper function to parse an optional string to *float64
+func parseOptionalFloatFromString(sVal *string, fieldName string) (*float64, *common.APIError) {
+	if sVal == nil || *sVal == "" {
+		return nil, nil // No value provided, not an error
+	}
+	fVal, err := strconv.ParseFloat(*sVal, 64)
+	if err != nil {
+		// Construct a user-friendly error message
+		detail := fmt.Sprintf("Invalid value for %s: '%s' is not a valid number.", fieldName, *sVal)
+		// It's good practice to log the original error for debugging.
+		// logger.Error("Failed to parse float from string", zap.String("field", fieldName), zap.String("value", *sVal), zap.Error(err))
+		return nil, common.ErrBadRequest.WithDetails(detail)
+	}
+	return &fVal, nil
+}
 
 // Handler struct holds dependencies for listing handlers.
 type Handler struct {
@@ -112,14 +132,38 @@ func (h *Handler) createListing(c *gin.Context) {
 		return
 	}
 
+	// Manually parse LatitudeStr and LongitudeStr if they were provided in the form
+	// For JSON requests, Latitude and Longitude (*float64) would be bound directly.
+	// For FormMultipart, LatitudeStr and LongitudeStr (*string) are bound.
+	// This check ensures we only parse if the string versions have values,
+	// and avoids issues if the primary float fields were somehow populated by JSON binding.
+
+	if c.ContentType() == "multipart/form-data" {
+		var apiErr *common.APIError
+		req.Latitude, apiErr = parseOptionalFloatFromString(req.LatitudeStr, "latitude")
+		if apiErr != nil {
+			h.logger.Warn("Create listing: Invalid latitude value", zap.Error(apiErr), zap.String("userID", userID.String()), zap.Stringp("latitude", req.LatitudeStr))
+			common.RespondWithError(c, apiErr)
+			return
+		}
+
+		req.Longitude, apiErr = parseOptionalFloatFromString(req.LongitudeStr, "longitude")
+		if apiErr != nil {
+			h.logger.Warn("Create listing: Invalid longitude value", zap.Error(apiErr), zap.String("userID", userID.String()), zap.Stringp("longitude", req.LongitudeStr))
+			common.RespondWithError(c, apiErr)
+			return
+		}
+	}
+	// After this, req.Latitude and req.Longitude are populated correctly for both JSON and multipart/form-data
+
 	// Access uploaded files
 	form := c.Request.MultipartForm
 	images := form.File["images"] // "images" is the field name for file uploads
 
 	// The service layer will handle the actual file saving and linking.
-	// The request to service.CreateListing will need to be updated to accept images.
 	listing, err := h.service.CreateListing(c.Request.Context(), userID, req, images)
 	if err != nil {
+		// Assuming err from service is already an APIError or can be wrapped into one
 		common.RespondWithError(c, err)
 		return
 	}
@@ -253,6 +297,25 @@ func (h *Handler) updateListing(c *gin.Context) {
 		return
 	}
 
+	// Manually parse LatitudeStr and LongitudeStr if they were provided in the form
+	if c.ContentType() == "multipart/form-data" {
+		var apiErr *common.APIError
+		req.Latitude, apiErr = parseOptionalFloatFromString(req.LatitudeStr, "latitude")
+		if apiErr != nil {
+			h.logger.Warn("Update listing: Invalid latitude value", zap.Error(apiErr), zap.String("listingID", listingID.String()), zap.Stringp("latitude", req.LatitudeStr))
+			common.RespondWithError(c, apiErr)
+			return
+		}
+
+		req.Longitude, apiErr = parseOptionalFloatFromString(req.LongitudeStr, "longitude")
+		if apiErr != nil {
+			h.logger.Warn("Update listing: Invalid longitude value", zap.Error(apiErr), zap.String("listingID", listingID.String()), zap.Stringp("longitude", req.LongitudeStr))
+			common.RespondWithError(c, apiErr)
+			return
+		}
+	}
+	// After this, req.Latitude and req.Longitude are populated correctly for both JSON and multipart/form-data
+
 	// Access newly uploaded files
 	form := c.Request.MultipartForm
 	newImages := form.File["images"] // Field name for new images
@@ -260,6 +323,7 @@ func (h *Handler) updateListing(c *gin.Context) {
 	// The service layer will handle updating, adding new images, and removing specified old images.
 	listing, err := h.service.UpdateListing(c.Request.Context(), listingID, userID, req, newImages)
 	if err != nil {
+		// Assuming err from service is already an APIError or can be wrapped into one
 		common.RespondWithError(c, err)
 		return
 	}

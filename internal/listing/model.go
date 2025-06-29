@@ -203,8 +203,10 @@ type CreateListingRequest struct {
 	City               *string                                 `json:"city,omitempty" binding:"omitempty,max=100"`
 	State              *string                                 `json:"state,omitempty" binding:"omitempty,max=50"`
 	ZipCode            *string                                 `json:"zip_code,omitempty" binding:"omitempty,max=20"`
-	Latitude           *float64                                `json:"latitude,omitempty" binding:"omitempty,latitude"`
-	Longitude          *float64                                `json:"longitude,omitempty" binding:"omitempty,longitude"`
+	Latitude           *float64                                `json:"latitude,omitempty" form:"-" binding:"omitempty,latitude"`
+	Longitude          *float64                                `json:"longitude,omitempty" form:"-" binding:"omitempty,longitude"`
+	LatitudeStr        *string                                 `form:"latitude" json:"-"`
+	LongitudeStr       *string                                 `form:"longitude" json:"-"`
 	BabysittingDetails *CreateListingBabysittingDetailsRequest `json:"babysitting_details,omitempty"`
 	HousingDetails     *CreateListingHousingDetailsRequest     `json:"housing_details,omitempty"`
 	EventDetails       *CreateListingEventDetailsRequest       `json:"event_details,omitempty"`
@@ -225,8 +227,10 @@ type UpdateListingRequest struct {
 	City               *string                                 `json:"city,omitempty" binding:"omitempty,max=100"`
 	State              *string                                 `json:"state,omitempty" binding:"omitempty,max=50"`
 	ZipCode            *string                                 `json:"zip_code,omitempty" binding:"omitempty,max=20"`
-	Latitude           *float64                                `json:"latitude,omitempty" binding:"omitempty,latitude"`
-	Longitude          *float64                                `json:"longitude,omitempty" binding:"omitempty,longitude"`
+	Latitude           *float64                                `json:"latitude,omitempty" form:"-" binding:"omitempty,latitude"`
+	Longitude          *float64                                `json:"longitude,omitempty" form:"-" binding:"omitempty,longitude"`
+	LatitudeStr        *string                                 `form:"latitude" json:"-"`
+	LongitudeStr       *string                                 `form:"longitude" json:"-"`
 	BabysittingDetails *CreateListingBabysittingDetailsRequest `json:"babysitting_details,omitempty"`
 	HousingDetails     *CreateListingHousingDetailsRequest     `json:"housing_details,omitempty"`
 	EventDetails       *CreateListingEventDetailsRequest       `json:"event_details,omitempty"`
