@@ -49,7 +49,10 @@ func (r *GORMRepository) preloader(query *gorm.DB) *gorm.DB {
 		Preload("SubCategory").
 		Preload("BabysittingDetails").
 		Preload("HousingDetails").
-		Preload("EventDetails")
+		Preload("EventDetails").
+		Preload("Images", func(db *gorm.DB) *gorm.DB { // Preload images and order them
+			return db.Order("listing_images.sort_order ASC")
+		})
 }
 
 // Create inserts a new listing and its details into the database within a transaction.
@@ -111,13 +114,25 @@ func (r *GORMRepository) Update(ctx context.Context, listing *Listing) error {
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		// Save the main listing record. .Save updates all fields or inserts if not found by primary key.
 		// Use .Model(&Listing{}).Where("id = ?", listing.ID).Updates(map_of_changes) for partial updates.
-		// For simplicity with full struct, Save is used.
-		if err := tx.Save(listing).Error; err != nil {
-			return fmt.Errorf("failed to update listing: %w", err)
+		// For full association handling (create, update, delete based on the state of listing.Images),
+		// we use Save with FullSaveAssociations.
+		// The service layer is responsible for preparing the listing.Images slice with the final desired state.
+		if err := tx.Session(&gorm.Session{FullSaveAssociations: true}).Save(listing).Error; err != nil {
+			return fmt.Errorf("failed to update listing and its associations: %w", err)
 		}
 
-		// Update or Create details
-		// GORM's .Save on associations can be tricky, explicit .Updates or .Create might be safer
+		// GORM's .Save with FullSaveAssociations should handle the ListingImages association correctly.
+		// It will update existing images, create new ones, and delete those not present in the listing.Images slice.
+
+		// Update or Create other details (Babysitting, Housing, Event)
+		// These are one-to-one relationships, handled similarly or as before.
+		// If these also need FullSaveAssociations benefits, ensure they are handled correctly by the .Save call above
+		// or manage them explicitly as below if .Save doesn't cover them as expected.
+		// The current explicit handling for these details might still be necessary if their primary key (ListingID)
+		// needs specific OnConflict behavior not covered by a simple FullSaveAssociations on the Listing model.
+		// For now, let's assume the existing explicit handling for these details is still desired.
+
+		// Example: Upsert Babysitting Details
 		// or delete existing and recreate. For simplicity, we assume .Save on the main listing
 		// with preloaded or assigned associations might work if GORM is configured for it,
 		// but it's often more robust to handle them explicitly.

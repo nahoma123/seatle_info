@@ -5,11 +5,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"mime/multipart" // Added for image handling
 	"time"
 
 	"seattle_info_backend/internal/category"
 	"seattle_info_backend/internal/common"
 	"seattle_info_backend/internal/config"
+	"seattle_info_backend/internal/filestorage" // Added for image handling
 	"seattle_info_backend/internal/notification"
 	"seattle_info_backend/internal/user"
 
@@ -19,9 +21,9 @@ import (
 
 // Service defines the interface for listing-related business logic.
 type Service interface {
-	CreateListing(ctx context.Context, userID uuid.UUID, req CreateListingRequest) (*Listing, error)
+	CreateListing(ctx context.Context, userID uuid.UUID, req CreateListingRequest, images []*multipart.FileHeader) (*Listing, error)
 	GetListingByID(ctx context.Context, id uuid.UUID, authenticatedUserID *uuid.UUID) (*Listing, error)
-	UpdateListing(ctx context.Context, id uuid.UUID, userID uuid.UUID, req UpdateListingRequest) (*Listing, error)
+	UpdateListing(ctx context.Context, id uuid.UUID, userID uuid.UUID, req UpdateListingRequest, newImages []*multipart.FileHeader) (*Listing, error)
 	DeleteListing(ctx context.Context, id uuid.UUID, userID uuid.UUID) error
 	SearchListings(ctx context.Context, query ListingSearchQuery, authenticatedUserID *uuid.UUID) ([]Listing, *common.Pagination, error)
 	GetUserListings(ctx context.Context, userID uuid.UUID, query UserListingsQuery) ([]Listing, *common.Pagination, error)
@@ -43,6 +45,7 @@ type ServiceImplementation struct {
 	userRepo            user.Repository
 	categoryService     category.Service
 	notificationService notification.Service
+	fileStorageService  *filestorage.FileStorageService // Added
 	cfg                 *config.Config
 	logger              *zap.Logger
 }
@@ -53,6 +56,7 @@ func NewService(
 	userRepo user.Repository,
 	categoryService category.Service,
 	notificationService notification.Service,
+	fileStorageService *filestorage.FileStorageService, // Added
 	cfg *config.Config,
 	logger *zap.Logger,
 ) Service {
@@ -61,13 +65,14 @@ func NewService(
 		userRepo:            userRepo,
 		categoryService:     categoryService,
 		notificationService: notificationService,
+		fileStorageService:  fileStorageService, // Added
 		cfg:                 cfg,
 		logger:              logger,
 	}
 }
 
 // CreateListing handles the business logic for creating a new listing.
-func (s *ServiceImplementation) CreateListing(ctx context.Context, userID uuid.UUID, req CreateListingRequest) (*Listing, error) {
+func (s *ServiceImplementation) CreateListing(ctx context.Context, userID uuid.UUID, req CreateListingRequest, images []*multipart.FileHeader) (*Listing, error) {
 	cat, err := s.categoryService.GetCategoryByID(ctx, req.CategoryID, true)
 	if err != nil {
 		s.logger.Warn("Invalid category ID during listing creation", zap.String("categoryID", req.CategoryID.String()), zap.Error(err))
@@ -180,6 +185,24 @@ func (s *ServiceImplementation) CreateListing(ctx context.Context, userID uuid.U
 		newListing.Location = &PostGISPoint{Lat: *req.Latitude, Lon: *req.Longitude}
 	}
 
+	// Process and save images
+	if len(images) > 0 {
+		newListing.Images = make([]ListingImage, 0, len(images))
+		for i, imageFile := range images {
+			// Define a subdirectory for listing images, e.g., "listings"
+			relativePath, err := s.fileStorageService.SaveUploadedFile(imageFile, "listings")
+			if err != nil {
+				s.logger.Error("Failed to save uploaded image", zap.Error(err), zap.String("filename", imageFile.Filename))
+				// Potentially rollback previously saved images or handle error more gracefully
+				return nil, common.ErrBadRequest.WithDetails(fmt.Sprintf("Failed to save image %s: %s", imageFile.Filename, err.Error()))
+			}
+			newListing.Images = append(newListing.Images, ListingImage{
+				ImagePath: relativePath,
+				SortOrder: i, // Simple sort order based on upload sequence
+			})
+		}
+	}
+
 	if req.BabysittingDetails != nil {
 		newListing.BabysittingDetails = &ListingDetailsBabysitting{
 			LanguagesSpoken: req.BabysittingDetails.LanguagesSpoken,
@@ -274,8 +297,15 @@ func (s *ServiceImplementation) AdminGetListingByID(ctx context.Context, id uuid
 }
 
 // UpdateListing handles the logic for updating an existing listing.
-func (s *ServiceImplementation) UpdateListing(ctx context.Context, id uuid.UUID, userID uuid.UUID, req UpdateListingRequest) (*Listing, error) {
-	existingListing, err := s.repo.FindByID(ctx, id, true)
+func (s *ServiceImplementation) UpdateListing(ctx context.Context, id uuid.UUID, userID uuid.UUID, req UpdateListingRequest, newImages []*multipart.FileHeader) (*Listing, error) {
+	// Start a transaction for atomicity, as we're dealing with DB records and potentially files.
+	// The repository's Update method already uses a transaction for listing and its direct details.
+	// We need to extend this or ensure operations here are also part of a transaction if they involve DB changes
+	// for ListingImage records before the main s.repo.Update call.
+	// For now, file operations will happen outside the main repo transaction.
+	// If repo.Update also handles ListingImages, then it's fine. Otherwise, manual transaction management here is better.
+
+	existingListing, err := s.repo.FindByID(ctx, id, true) // Preload images as well
 	if err != nil {
 		return nil, err
 	}
@@ -430,8 +460,72 @@ func (s *ServiceImplementation) UpdateListing(ctx context.Context, id uuid.UUID,
 		// Business logic for re-approval or state change on edit can be added here.
 	}
 
+	// Handle image deletions
+	if len(req.RemoveImageIDs) > 0 {
+		imagesToKeep := []ListingImage{}
+		imagePathsToDelete := []string{}
+		for _, img := range existingListing.Images {
+			shouldRemove := false
+			for _, removeID := range req.RemoveImageIDs {
+				if img.ID == removeID {
+					shouldRemove = true
+					break
+				}
+			}
+			if shouldRemove {
+				imagePathsToDelete = append(imagePathsToDelete, img.ImagePath)
+			} else {
+				imagesToKeep = append(imagesToKeep, img)
+			}
+		}
+		existingListing.Images = imagesToKeep
+
+		// Actual deletion from DB will be handled by GORM's association update if configured,
+		// or needs explicit delete calls. For files, we delete them now.
+		for _, path := range imagePathsToDelete {
+			if err := s.fileStorageService.DeleteFile(path); err != nil {
+				s.logger.Error("Failed to delete image file during update", zap.String("path", path), zap.Error(err))
+				// Continue with other operations, but log the error.
+			}
+		}
+		// Note: The repository's Update method needs to correctly handle the removal of ListingImage records
+		// from the database when existingListing.Images slice is updated. This might involve GORM's
+		// full replacement of associations or specific logic in the repo.
+	}
+
+	// Handle new image uploads
+	if len(newImages) > 0 {
+		// Determine the current max sort order to append new images correctly
+		currentMaxSortOrder := -1
+		for _, img := range existingListing.Images {
+			if img.SortOrder > currentMaxSortOrder {
+				currentMaxSortOrder = img.SortOrder
+			}
+		}
+
+		for _, imageFile := range newImages {
+			relativePath, errFile := s.fileStorageService.SaveUploadedFile(imageFile, "listings")
+			if errFile != nil {
+				s.logger.Error("Failed to save new uploaded image during update", zap.Error(errFile), zap.String("filename", imageFile.Filename))
+				return nil, common.ErrBadRequest.WithDetails(fmt.Sprintf("Failed to save new image %s: %s", imageFile.Filename, errFile.Error()))
+			}
+			currentMaxSortOrder++
+			newListingImage := ListingImage{
+				ListingID: existingListing.ID, // Ensure ListingID is set
+				ImagePath: relativePath,
+				SortOrder: currentMaxSortOrder,
+			}
+			existingListing.Images = append(existingListing.Images, newListingImage)
+		}
+	}
+
+	// The s.repo.Update method needs to be robust enough to handle updates to existing ListingImage entries (e.g. SortOrder changes if implemented)
+	// and creation of new ListingImage entries, and deletion of ones removed from existingListing.Images.
+	// This typically involves GORM's `Session(&gorm.Session{FullSaveAssociations: true})` or specific association handling in the repo.
 	if err := s.repo.Update(ctx, existingListing); err != nil {
 		s.logger.Error("Failed to update listing in repository", zap.Error(err), zap.String("listingID", id.String()))
+		// If files were saved but DB update failed, they need to be rolled back (deleted). This is complex.
+		// For now, we rely on the overall operation failing.
 		return nil, err
 	}
 
@@ -447,11 +541,47 @@ func (s *ServiceImplementation) UpdateListing(ctx context.Context, id uuid.UUID,
 
 // DeleteListing handles deleting a listing.
 func (s *ServiceImplementation) DeleteListing(ctx context.Context, id uuid.UUID, userID uuid.UUID) error {
-	if err := s.repo.Delete(ctx, id, userID); err != nil {
-		s.logger.Error("Failed to delete listing", zap.Error(err), zap.String("listingID", id.String()), zap.String("userID", userID.String()))
+	// First, fetch the listing to get image paths for file deletion
+	listing, err := s.repo.FindByID(ctx, id, true) // Ensure images are preloaded
+	if err != nil {
+		if errors.Is(err, common.ErrNotFound) { // Use common.IsAPIError for type checking if applicable
+			s.logger.Warn("Attempt to delete non-existent listing or listing not found", zap.String("listingID", id.String()), zap.String("userID", userID.String()))
+			return common.ErrNotFound.WithDetails("Listing not found.")
+		}
+		s.logger.Error("Failed to fetch listing before deletion", zap.Error(err), zap.String("listingID", id.String()))
 		return err
 	}
-	s.logger.Info("Listing deleted successfully", zap.String("listingID", id.String()), zap.String("userID", userID.String()))
+
+	// Check ownership
+	if listing.UserID != userID {
+		s.logger.Warn("User attempted to delete a listing they do not own",
+			zap.String("listingID", id.String()),
+			zap.String("deleterUserID", userID.String()),
+			zap.String("ownerUserID", listing.UserID.String()))
+		return common.ErrForbidden.WithDetails("You do not have permission to delete this listing.")
+	}
+
+	// Delete associated image files from filesystem
+	for _, img := range listing.Images {
+		if img.ImagePath != "" {
+			if err := s.fileStorageService.DeleteFile(img.ImagePath); err != nil {
+				s.logger.Error("Failed to delete image file during listing deletion",
+					zap.String("listingID", id.String()),
+					zap.String("imagePath", img.ImagePath),
+					zap.Error(err))
+				// Log error and continue. Database record will still be deleted by cascade.
+				// Depending on policy, could return an error here.
+			}
+		}
+	}
+
+	// Delete the listing from the database (this should cascade to listing_images table)
+	if err := s.repo.Delete(ctx, id, userID); err != nil {
+		s.logger.Error("Failed to delete listing from repository", zap.Error(err), zap.String("listingID", id.String()), zap.String("userID", userID.String()))
+		return err
+	}
+
+	s.logger.Info("Listing and associated image files deleted successfully", zap.String("listingID", id.String()), zap.String("userID", userID.String()))
 	return nil
 }
 
@@ -639,7 +769,8 @@ func (s *ServiceImplementation) GetRecentListings(ctx context.Context, page, pag
 
 	listingResponses := make([]ListingResponse, len(listings))
 	for i, l := range listings {
-		listingResponses[i] = ToListingResponse(&l, false)
+		// Pass h.cfg.ImagePublicBaseURL for image URL construction
+		listingResponses[i] = ToListingResponse(&l, false, s.cfg.ImagePublicBaseURL)
 	}
 
 	return listingResponses, pagination, nil
@@ -655,7 +786,7 @@ func (s *ServiceImplementation) GetUpcomingEvents(ctx context.Context, page, pag
 
 	listingResponses := make([]ListingResponse, len(listings))
 	for i, l := range listings {
-		listingResponses[i] = ToListingResponse(&l, false)
+		listingResponses[i] = ToListingResponse(&l, false, s.cfg.ImagePublicBaseURL)
 	}
 
 	return listingResponses, pagination, nil

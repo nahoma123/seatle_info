@@ -14,6 +14,7 @@ import (
 	"seattle_info_backend/internal/auth"
 	"seattle_info_backend/internal/category"
 	"seattle_info_backend/internal/config"
+	"seattle_info_backend/internal/filestorage"
 	"seattle_info_backend/internal/firebase"
 	"seattle_info_backend/internal/jobs"
 	"seattle_info_backend/internal/listing"
@@ -45,8 +46,13 @@ func initializeServer(cfg *config.Config) (*app.Server, func(), error) {
 	listingRepository := listing.NewGORMRepository(db)
 	notificationRepository := notification.NewGORMRepository(db)
 	notificationService := notification.NewService(notificationRepository, zapLogger)
-	listingService := listing.NewService(listingRepository, repository, service, notificationService, cfg, zapLogger)
-	listingHandler := listing.NewHandler(listingService, zapLogger)
+	string2 := provideImageStoragePath(cfg)
+	fileStorageService, err := filestorage.NewFileStorageService(string2, zapLogger)
+	if err != nil {
+		return nil, nil, err
+	}
+	listingService := listing.NewService(listingRepository, repository, service, notificationService, fileStorageService, cfg, zapLogger)
+	listingHandler := listing.NewHandler(listingService, zapLogger, cfg)
 	notificationHandler := notification.NewHandler(notificationService, zapLogger)
 	listingExpiryJob := jobs.NewListingExpiryJob(listingService, zapLogger, cfg)
 	firebaseService, err := firebase.NewFirebaseService(cfg, zapLogger)
@@ -62,6 +68,10 @@ func initializeServer(cfg *config.Config) (*app.Server, func(), error) {
 }
 
 // wire.go:
+
+func provideImageStoragePath(cfg *config.Config) string {
+	return cfg.ImageStoragePath
+}
 
 func provideCleanup(logger2 *zap.Logger, db *gorm.DB) func() {
 	return func() {

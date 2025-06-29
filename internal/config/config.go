@@ -46,6 +46,10 @@ type Config struct {
 	// Firebase Configuration
 	FirebaseServiceAccountKeyPath string `mapstructure:"FIREBASE_SERVICE_ACCOUNT_KEY_PATH"`
 	FirebaseProjectID             string `mapstructure:"FIREBASE_PROJECT_ID"`
+
+	// Image Storage Configuration
+	ImageStoragePath   string `mapstructure:"IMAGE_STORAGE_PATH"`
+	ImagePublicBaseURL string `mapstructure:"IMAGE_PUBLIC_BASE_URL"`
 }
 
 // Load attempts to load configuration from a .env file (if present) and environment variables.
@@ -87,6 +91,10 @@ func Load() (*Config, error) {
 	// Firebase
 	v.SetDefault("FIREBASE_PROJECT_ID", "") // Optional
 	v.SetDefault("FIREBASE_SERVICE_ACCOUNT_KEY_PATH", "")
+
+	// Image Storage
+	v.SetDefault("IMAGE_STORAGE_PATH", "./images") // Default path for storing images
+	v.SetDefault("IMAGE_PUBLIC_BASE_URL", "/static/images") // Default base URL for accessing images
 
 	v.AutomaticEnv()
 	// Optional: v.SetConfigName("config"); v.AddConfigPath("."); v.ReadInConfig()

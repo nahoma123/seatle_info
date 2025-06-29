@@ -281,6 +281,13 @@ Manages listings posted by users.
                 "status": "active",
                 "latitude": 47.6062,
                 "longitude": -122.3321,
+                "images": [
+                    {
+                        "id": "img_uuid_example_1",
+                        "image_url": "/static/images/listings/armchair_front.jpg",
+                        "sort_order": 0
+                    }
+                ],
                 "created_at": "2023-10-20T09:00:00Z",
                 "updated_at": "2023-10-21T10:00:00Z",
                 "expires_at": "2023-11-20T09:00:00Z"
@@ -299,35 +306,98 @@ Manages listings posted by users.
 ### `POST /api/v1/listings`
 *   **Description**: Creates a new listing.
 *   **Auth**: Bearer Token (Firebase ID Token)
-*   **Request Body**:
-    ```json
-    {
-        "title": "Used Bicycle",
-        "description": "Men's mountain bike, 21 speeds, needs minor repairs.",
-        "category_id": "c1d2e3f4-a5b6-7890-1234-567890abcdef", // Example: Electronics, adjust as needed
-        "price": 120.50,
-        "latitude": 47.6097,  // Optional
-        "longitude": -122.3331 // Optional
-    }
-    ```
+*   **Content-Type**: `multipart/form-data`
+*   **Form Data Parameters**:
+    *   `title` (string, required): Title of the listing.
+    *   `description` (string, required): Description of the listing.
+    *   `category_id` (UUID, required): ID of the category.
+    *   `sub_category_id` (UUID, optional): ID of the sub-category.
+    *   `contact_name` (string, optional): Contact name.
+    *   `contact_email` (string, optional): Contact email.
+    *   `contact_phone` (string, optional): Contact phone.
+    *   `address_line1` (string, optional): Address line 1.
+    *   `address_line2` (string, optional): Address line 2.
+    *   `city` (string, optional): City.
+    *   `state` (string, optional): State.
+    *   `zip_code` (string, optional): Zip code.
+    *   `latitude` (float, optional): Latitude.
+    *   `longitude` (float, optional): Longitude.
+    *   `babysitting_details_json` (string, optional): JSON string for CreateListingBabysittingDetailsRequest. E.g., `{"languages_spoken": ["English", "Spanish"]}`.
+    *   `housing_details_json` (string, optional): JSON string for CreateListingHousingDetailsRequest. E.g., `{"property_type": "for_rent", "rent_details": "$1500/month"}`.
+    *   `event_details_json` (string, optional): JSON string for CreateListingEventDetailsRequest. E.g., `{"event_date": "2024-12-31", "event_time": "10:00:00"}`.
+    *   `images` (file, optional): One or more image files. Use `images` as the field name for each file (e.g., `images` or `images[]` depending on client).
 *   **Response**: `201 Created`
     ```json
     {
         "id": "k1j2h3g4-f5e6-d789-c012-b3456789axyz",
-        "title": "Used Bicycle",
-        "description": "Men's mountain bike, 21 speeds, needs minor repairs.",
-        "category_id": "c1d2e3f4-a5b6-7890-1234-567890abcdef",
-        "user_id": "current_authenticated_user_id", // Set by backend
-        "price": 120.50,
+        "user_id": "current_authenticated_user_id",
+        // ... other listing fields like title, description, category, etc. ...
+        "images": [
+            {
+                "id": "img_uuid_1",
+                "image_url": "/static/images/listings/unique_name_1.jpg",
+                "sort_order": 0
+            },
+            {
+                "id": "img_uuid_2",
+                "image_url": "/static/images/listings/unique_name_2.png",
+                "sort_order": 1
+            }
+        ],
         "status": "active", // Default status
-        "latitude": 47.6097,
-        "longitude": -122.3331,
         "created_at": "2023-10-27T15:00:00Z",
         "updated_at": "2023-10-27T15:00:00Z",
         "expires_at": "2023-11-06T15:00:00Z" // Calculated by backend
     }
     ```
+*   **Note on Nested Details**: For fields like `babysitting_details`, `housing_details`, and `event_details`, since the main request is `multipart/form-data`, these complex objects should be sent as JSON strings under respective form fields (e.g., `babysitting_details_json`). The backend will parse these JSON strings.
 *   **Error Responses**: `400`, `401`, `422`, `500`
+
+### `GET /api/v1/listings/{id}`
+*   **Description**: Retrieves a specific listing by its ID.
+*   **Auth**: Public (though contact details might be hidden for non-authenticated users or non-owners)
+*   **Path Parameters**:
+    *   `id` (UUID, required): The ID of the listing to retrieve.
+*   **Response**: `200 OK`
+    ```json
+    {
+        "id": "l1m2n3o4-p5q6-r789-s012-t3456789uvwx",
+        "title": "Vintage Armchair",
+        "description": "Comfortable vintage armchair, good condition.",
+        "category_id": "b1c2d3e4-f5a6-b789-0123-456789abcdef",
+        "user_id": "a1b2c3d4-e5f6-7890-1234-567890abcdef",
+        // ... other fields like price, status, location ...
+        "images": [
+            {
+                "id": "img_uuid_chair_1",
+                "image_url": "/static/images/listings/vintage_armchair_1.jpg",
+                "sort_order": 0
+            },
+            {
+                "id": "img_uuid_chair_2",
+                "image_url": "/static/images/listings/vintage_armchair_2.jpg",
+                "sort_order": 1
+            }
+        ],
+        "user": {
+            "id": "a1b2c3d4-e5f6-7890-1234-567890abcdef",
+            "first_name": "John",
+            "last_name": "Doe",
+            "profile_picture_url": null
+        },
+        "category": {
+            "id": "b1c2d3e4-f5a6-b789-0123-456789abcdef",
+            "name": "Furniture",
+            "slug": "furniture"
+        },
+        // ... babysitting_details, housing_details, or event_details if applicable ...
+        "created_at": "2023-10-20T09:00:00Z",
+        "updated_at": "2023-10-21T10:00:00Z",
+        "expires_at": "2023-11-20T09:00:00Z"
+    }
+    ```
+*   **Error Responses**: `400`, `404`, `500`
+
 
 ### `GET /api/v1/listings/my-listings`
 *   **Method & Path:** `GET /api/v1/listings/my-listings`
@@ -385,7 +455,19 @@ Manages listings posted by users.
                     "venue_name": "Downtown Park"
                 },
                 "housing_details": null, // Only one detail type will be populated
-                "babysitting_details": null
+                "babysitting_details": null,
+                "images": [
+                    {
+                        "id": "img_uuid_fest_1",
+                        "image_url": "/static/images/listings/fest_flyer.jpg",
+                        "sort_order": 0
+                    },
+                    {
+                        "id": "img_uuid_fest_2",
+                        "image_url": "/static/images/listings/fest_crowd.png",
+                        "sort_order": 1
+                    }
+                ]
             }
             // ... other listings ...
         ],
@@ -405,63 +487,44 @@ Manages listings posted by users.
 *   **Method & Path:** `PUT /api/v1/listings/{listing_id}`
 *   **Description:** Allows an authenticated user to update the details of a listing they own. Fields not provided in the request body will generally remain unchanged (partial update).
 *   **Authentication:** Required (Bearer Token - Firebase ID Token).
+*   **Content-Type**: `multipart/form-data`
 *   **URL Parameters:**
     *   `listing_id` (UUID, required): The ID of the listing to update.
-*   **Request Body:**
-    *   The request body should be a JSON object containing the fields to update. This can include top-level listing fields and/or category-specific detail fields.
-    *   The category of a listing cannot be changed.
+*   **Form Data Parameters**:
+    *   Similar to `POST /api/v1/listings`, all fields are optional. Only provided fields will be updated.
+    *   `title` (string, optional)
+    *   `description` (string, optional)
+    *   `contact_name` (string, optional)
+    *   `remove_image_ids` (UUID, optional): One or more UUIDs of existing images to remove. Can be sent as repeated form fields (e.g., `remove_image_ids=uuid1&remove_image_ids=uuid2`).
+    *   `images` (file, optional): One or more new image files to add.
+    *   Category-specific details (e.g. `event_details_json`) can also be updated by sending their JSON string.
+    *   The category (`category_id`) of a listing cannot be changed.
     *   `status` and `is_admin_approved` fields are not modifiable via this endpoint.
-    *   **Example for an Event Listing Update:**
-        ```json
-        {
-            "title": "Updated Community Summer Fest",
-            "description": "Updated details: Now with more food trucks and live bands!",
-            "contact_phone": "555-0199",
-            "event_details": { // Key based on category (e.g., housing_details, babysitting_details)
-                "event_date": "2024-07-21",   // Date string "YYYY-MM-DD"
-                "event_time": "11:00:00",     // Time string "HH:MM:SS"
-                "venue_name": "Central City Park"
-            }
-        }
-        ```
-    *   **Example for a Housing Listing Update (partial - only rent details):**
-        ```json
-        {
-            "housing_details": {
-                "property_type": "for_rent", // Must match existing or be a valid update based on rules
-                "rent_details": "$2200/month, utilities included"
-            }
-        }
-        ```
 *   **Successful Response (200 OK):**
-    *   Returns the fully updated listing object, similar to the `GET /api/v1/listings/{listing_id}` response structure.
+    *   Returns the fully updated listing object, including the latest state of its images.
     ```json
     {
         "message": "Listing updated successfully.",
         "data": {
             "id": "a1b2c3d4-e5f6-7890-1234-567890abcdef",
-            "user_id": "u1v2w3x4-y5z6-7890-1234-567890qrstuv",
-            "category_id": "cat_events_uuid",
-            "title": "Updated Community Summer Fest",
-            "description": "Updated details: Now with more food trucks and live bands!",
-            "contact_phone": "555-0199",
-            // ... other fields ...
-            "updated_at": "2024-03-15T14:00:00Z", // Note: timestamp reflects update time
-            "user": { /* ... user details ... */ },
-            "category": { /* ... category details for "events" ... */ },
-            "sub_category": null,
-            "event_details": {
-                "listing_id": "a1b2c3d4-e5f6-7890-1234-567890abcdef",
-                "event_date": "2024-07-21T00:00:00Z", // Date part from request, time is zeroed
-                "event_time": "11:00:00",
-                "organizer_name": "City Events Committee", // Unchanged if not in request
-                "venue_name": "Central City Park"
-            },
-            "housing_details": null,
-            "babysitting_details": null
+            // ... other updated listing fields ...
+            "images": [
+                {
+                    "id": "img_uuid_1_kept",
+                    "image_url": "/static/images/listings/kept_image.jpg",
+                    "sort_order": 0
+                },
+                {
+                    "id": "new_img_uuid_3",
+                    "image_url": "/static/images/listings/newly_uploaded.png",
+                    "sort_order": 1
+                }
+            ],
+            "updated_at": "2024-03-15T14:00:00Z"
         }
     }
     ```
+*   **Note on Nested Details**: Similar to POST, send as JSON strings in form fields (e.g. `housing_details_json`).
 *   **Error Responses:**
     *   `400 Bad Request`: If the `listing_id` is invalid or the request body has general format issues.
     *   `401 Unauthorized`: If the user is not authenticated.
@@ -498,6 +561,13 @@ Manages listings posted by users.
                 "zip_code": "98101",
                 "latitude": 47.6062,
                 "longitude": -122.3321,
+                "images": [
+                    {
+                        "id": "img_uuid_scarf_1",
+                        "image_url": "/static/images/listings/scarf_closeup.jpg",
+                        "sort_order": 0
+                    }
+                ],
                 "category_info": {
                     "id": "category-uuid",
                     "name": "Handmade Goods",
@@ -559,6 +629,13 @@ Manages event-specific listings.
                     "organizer_name": "Community Events LLC",
                     "venue_name": "City Park Amphitheater"
                 },
+                "images": [
+                     {
+                        "id": "img_uuid_event_1",
+                        "image_url": "/static/images/listings/event_poster.jpg",
+                        "sort_order": 0
+                    }
+                ],
                 "category_info": {
                     "id": "category-uuid-events",
                     "name": "Events",

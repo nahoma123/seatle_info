@@ -10,7 +10,8 @@ import (
 	"seattle_info_backend/internal/auth"
 	"seattle_info_backend/internal/category"
 	"seattle_info_backend/internal/config"
-	"seattle_info_backend/internal/firebase" // Added
+	"seattle_info_backend/internal/firebase"     // Added
+	"seattle_info_backend/internal/filestorage" // Added
 	"seattle_info_backend/internal/jobs"
 	"seattle_info_backend/internal/listing"
 	"seattle_info_backend/internal/notification" // Add this
@@ -34,6 +35,9 @@ func initializeServer(cfg *config.Config) (*app.Server, func(), error) {
 
 		// Firebase Service (New)
 		firebase.NewFirebaseService,
+
+		// FileStorage Service (New)
+		filestorage.NewFileStorageService,
 
 		// Core User Services
 		user.NewGORMRepository, // Returns user.Repository
@@ -75,8 +79,15 @@ func initializeServer(cfg *config.Config) (*app.Server, func(), error) {
 
 		// Application Layer
 		app.NewServer, // app.NewServer now needs notification.Handler
+
+		// Provide specific config fields if needed by constructors
+		provideImageStoragePath,
 	)
 	return nil, nil, nil
+}
+
+func provideImageStoragePath(cfg *config.Config) string {
+	return cfg.ImageStoragePath
 }
 
 func provideCleanup(logger *zap.Logger, db *gorm.DB) func() {

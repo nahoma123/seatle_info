@@ -15,11 +15,13 @@ import (
 	"seattle_info_backend/internal/category"
 	"seattle_info_backend/internal/common"
 	"seattle_info_backend/internal/config"
+	"seattle_info_backend/internal/filestorage"   // Added
 	"seattle_info_backend/internal/listing"
 	"seattle_info_backend/internal/middleware"
+	"seattle_info_backend/internal/notification" // Added
+	"seattle_info_backend/internal/platform/database" // Corrected path
+	"seattle_info_backend/internal/platform/logger"   // Corrected path
 	"seattle_info_backend/internal/user"
-	"seattle_info_backend/pkg/database" // Assuming a package for DB setup
-	"seattle_info_backend/pkg/logging"  // Assuming a package for logger setup
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -38,23 +40,72 @@ type IntegrationTestSuite struct {
 	CatRepo    category.Repository
 	ListingRepo listing.Repository
 	AuthService auth.TokenService
+	FileStorageService *filestorage.FileStorageService // Corrected package
+	ListingService listing.Service // Store the service for direct calls if necessary for setup/assertions
 	// Add other necessary services/repos
 }
+
+const testImageStorageBasePath = "../../test_images_integration" // Relative to this test file's dir
 
 // SetupSuite runs once before all tests in the suite.
 func (s *IntegrationTestSuite) SetupSuite() {
 	// 0. Initialize Logger (using a test-friendly logger)
-	logger := logging.NewLogger("test", "console", "debug") // Or your actual logger init
+	// Corrected logger initialization based on common patterns.
+	// Ensure your logging package has a NewLogger function that returns *zap.Logger.
+	// For this example, I'll assume `platformlogger.New` returns *zap.Logger.
+	zapLogger := logger.New("debug", "console") // Using the actual logger from platform
+	s.Require().NotNil(zapLogger, "Logger should not be nil")
 
-	// 1. Load Configuration (consider a test-specific config if needed)
-	cfg, err := config.LoadConfig("../../configs", "config.test.yaml") // Adjust path and name
-	if err != nil {
-		logger.Fatal("Failed to load test config", zap.Error(err))
+
+	// 1. Load Configuration
+	// For integration tests, it's often better to override specific config values
+	// rather than relying on a config file that might change or not be available in CI.
+	// However, if LoadConfig is robust and can use env vars, that's also an option.
+	// Let's try to load and then override.
+	cfg, err := config.Load() // Assuming Load() uses env vars primarily or a root .env
+	s.Require().NoError(err, "Failed to load config for tests")
+
+	// Override necessary config for testing
+	cfg.DBHost = os.Getenv("TEST_DB_HOST") // Example: Get from ENV or set default
+	if cfg.DBHost == "" {
+		cfg.DBHost = "localhost"
 	}
+	cfg.DBPort = os.Getenv("TEST_DB_PORT")
+	if cfg.DBPort == "" {
+		cfg.DBPort = "5433" // Often a different port for test DB
+	}
+	cfg.DBUser = os.Getenv("TEST_DB_USER")
+	if cfg.DBUser == "" {
+		cfg.DBUser = "testuser"
+	}
+	cfg.DBPassword = os.Getenv("TEST_DB_PASSWORD")
+	if cfg.DBPassword == "" {
+		cfg.DBPassword = "testpassword"
+	}
+	cfg.DBName = os.Getenv("TEST_DB_NAME")
+	if cfg.DBName == "" {
+		cfg.DBName = "seattle_info_test_db"
+	}
+	cfg.DBSSLMode = "disable" // Usually disable SSL for local test DBs
+
+	// Override image storage path for tests
+	cfg.ImageStoragePath = testImageStorageBasePath
+	cfg.ImagePublicBaseURL = "/test_static_images" // Consistent with test path
 	s.Cfg = cfg
 
+	// Ensure test image storage directory exists and is clean
+	s.Require().NoError(os.RemoveAll(testImageStorageBasePath), "Failed to clean test image storage before suite")
+	s.Require().NoError(os.MkdirAll(filepath.Join(testImageStorageBasePath, "listings"), os.ModePerm), "Failed to create test image listings storage")
+
+
 	// 2. Initialize Database
-	db, err := database.InitDB(&cfg.Database)
+	// Construct DSN from overridden config
+	testDSN := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=%s TimeZone=UTC",
+		s.Cfg.DBHost, s.Cfg.DBPort, s.Cfg.DBUser, s.Cfg.DBPassword, s.Cfg.DBName, s.Cfg.DBSSLMode)
+
+	// Using the actual database.NewGORM from the project structure.
+	// Ensure your database package has a NewGORM that matches this signature.
+	db, err := database.NewGORM(testDSN, zapLogger, s.Cfg.DBMaxIdleConns, s.Cfg.DBMaxOpenConns, s.Cfg.DBConnMaxLifetime)
 	if err != nil {
 		logger.Fatal("Failed to initialize test database", zap.Error(err))
 	}
@@ -68,25 +119,45 @@ func (s *IntegrationTestSuite) SetupSuite() {
 	s.ListingRepo = listing.NewGORMRepository(s.DB)
 
 	// 4. Initialize Services
-	s.AuthService = auth.NewTokenService(s.Cfg.Auth.JWTSecret, s.Cfg.Auth.TokenExpiryMinutes, s.UserRepo, logger)
-	catService := category.NewService(s.CatRepo, logger)
-	listingService := listing.NewService(s.ListingRepo, s.UserRepo, catService, s.Cfg, logger)
+	// s.AuthService = auth.NewTokenService(s.Cfg.Auth.JWTSecret, s.Cfg.Auth.TokenExpiryMinutes, s.UserRepo, zapLogger) // Assuming Cfg.Auth exists
+	// For now, let's assume Firebase is mocked or not strictly needed for these specific listing image tests' auth part if we directly create users.
+	// If real token generation is needed, ensure Cfg.Auth fields are set.
+	// Simplified auth service initialization for now:
+	s.AuthService = auth.NewTokenService("test-secret", 60, s.UserRepo, zapLogger) // Replace with actual config later if needed for full auth flow
+
+	catService := category.NewService(s.CatRepo, zapLogger) // Use zapLogger
+
+	// Initialize FileStorageService
+	fileStorageService, errFs := filestorage.NewFileStorageService(s.Cfg.ImageStoragePath, zapLogger)
+	s.Require().NoError(errFs, "Failed to create FileStorageService for tests")
+	s.FileStorageService = fileStorageService
+
+	// Initialize NotificationService (mock or simple if not central to these tests)
+	// For now, assuming a nil or very basic notification service for listing creation.
+	// This needs to be replaced with actual or properly mocked NotificationService.
+	var mockNotificationService notification.Service // = notification.NewService(...)
+
+	// Update ListingService initialization
+	listingService := listing.NewService(s.ListingRepo, s.UserRepo, catService, mockNotificationService, s.FileStorageService, s.Cfg, zapLogger)
+	s.ListingService = listingService
+
 
 	// 5. Initialize Gin Engine and Routes
-	s.Router = gin.New() // Or gin.Default() if you want default middlewares
-	s.Router.Use(logging.GinMiddleware(logger)) // Add logging middleware
-	s.Router.Use(gin.Recovery())                // Add recovery middleware
+	s.Router = gin.New()
+	s.Router.Use(middleware.Logger(zapLogger)) // Corrected to use middleware.Logger
+	s.Router.Use(gin.Recovery())
 
 	// Setup middleware
-	authMiddleware := middleware.AuthMiddleware(s.AuthService, logger)
-	adminRoleMiddleware := middleware.RoleMiddleware(user.RoleAdmin, logger) // Assuming RoleAdmin constant
+	authMiddleware := middleware.Authenticate(s.AuthService, zapLogger) // Corrected to use middleware.Authenticate
+	adminRoleMiddleware := middleware.RequireRole("admin", zapLogger) // Corrected to use middleware.RequireRole
 
 	// Register routes (adapt to your main setup)
 	apiGroup := s.Router.Group("/api/v1")
-	listingHandler := listing.NewHandler(listingService, logger)
+	// Update ListingHandler initialization
+	listingHandler := listing.NewHandler(listingService, zapLogger, s.Cfg) // Pass s.Cfg
 	listingHandler.RegisterRoutes(apiGroup, authMiddleware, adminRoleMiddleware)
-	// Register other handlers if needed for FK constraints (e.g., category creation for tests)
-	categoryHandler := category.NewHandler(catService, logger)
+
+	categoryHandler := category.NewHandler(catService, zapLogger) // Use zapLogger
 	categoryHandler.RegisterRoutes(apiGroup, authMiddleware, adminRoleMiddleware)
 
 
@@ -96,6 +167,12 @@ func (s *IntegrationTestSuite) SetupSuite() {
 
 // TearDownSuite runs once after all tests in the suite.
 func (s *IntegrationTestSuite) TearDownSuite() {
+	// Clean up the test image storage directory
+	err := os.RemoveAll(testImageStorageBasePath)
+	if err != nil {
+		s.T().Logf("Warning: Failed to remove test image storage path %s: %v", testImageStorageBasePath, err)
+	}
+
 	// Close database connection if necessary
 	sqlDB, _ := s.DB.DB()
 	sqlDB.Close()
@@ -111,6 +188,7 @@ func (s *IntegrationTestSuite) SetupTest() {
 
 // Helper to clean all relevant tables.
 func (s *IntegrationTestSuite) cleanupDB() {
+	s.DB.Exec("DELETE FROM listing_images") // Added
 	s.DB.Exec("DELETE FROM listing_details_events")
 	s.DB.Exec("DELETE FROM listing_details_housing")
 	s.DB.Exec("DELETE FROM listing_details_babysitting")
@@ -716,3 +794,134 @@ func (s *IntegrationTestSuite) TestUpdateListing_Success_BabysittingDetails() {
 // They expect fields, e.g., logger.Fatal("msg", zap.Error(err)).
 // This will be implicitly fixed by using a real logger from the logging package.
 // For the purpose of this generation, the intent is clear.
+
+// --- Image Upload Test Cases ---
+
+func (s *IntegrationTestSuite) TestCreateListing_WithOneImage() {
+	testUser, token := s.createUser("imguser1", "imguser1@example.com", "password", user.RoleUser)
+	cat := s.createCategory("Image Category", "image-cat")
+
+	// Create a temporary image file for upload
+	tempImgContent := []byte("dummy image content")
+	tempImgPath := createTempImageFile(s.T(), "test_image_1.jpg", tempImgContent)
+	defer os.Remove(tempImgPath) // Clean up
+
+	params := map[string]string{
+		"title":       "Listing with One Image",
+		"description": "This listing has one beautiful image.",
+		"category_id": cat.ID.String(),
+		// Add other required fields if any, e.g., city, state, zip, contact, etc.
+		// For simplicity, assuming only title, desc, category_id are needed by CreateListingRequest's validation.
+		// If babysitting_details_json, housing_details_json, event_details_json are needed based on category, add them.
+	}
+	fileParams := map[string][]string{
+		"images": {tempImgPath}, // Field name "images"
+	}
+
+	req, err := CreateMultipartRequest("POST", "/api/v1/listings", params, fileParams)
+	s.Require().NoError(err)
+	req.Header.Set("Authorization", "Bearer "+token)
+
+	rr := httptest.NewRecorder()
+	s.Router.ServeHTTP(rr, req)
+
+	s.T().Logf("Create Listing Response Body: %s", rr.Body.String())
+	s.Equal(http.StatusCreated, rr.Code, "Response body: "+rr.Body.String())
+
+	var resp common.StandardResponse
+	err = json.Unmarshal(rr.Body.Bytes(), &resp)
+	s.Require().NoError(err)
+	s.True(resp.Success)
+
+	var createdListing listing.ListingResponse
+	respDataBytes, _ := json.Marshal(resp.Data)
+	err = json.Unmarshal(respDataBytes, &createdListing)
+	s.Require().NoError(err)
+
+	s.Equal("Listing with One Image", createdListing.Title)
+	s.NotEmpty(createdListing.ID)
+	s.Require().Len(createdListing.Images, 1, "Should have one image in response")
+	s.NotEmpty(createdListing.Images[0].ID, "Image ID should not be empty")
+	s.NotEmpty(createdListing.Images[0].ImageURL, "Image URL should not be empty")
+	s.True(strings.HasPrefix(createdListing.Images[0].ImageURL, s.Cfg.ImagePublicBaseURL), "Image URL should use configured base URL")
+	s.Equal(0, createdListing.Images[0].SortOrder)
+
+	// Verify image file exists on disk
+	// The ImagePath in the DB is relative to ImageStoragePath/listings
+	// Example: listings/uuid.jpg. So ImageURL would be /test_static_images/listings/uuid.jpg
+	// We need to get the relative path from the URL to check the file system.
+	expectedRelPathInURL := strings.TrimPrefix(createdListing.Images[0].ImageURL, s.Cfg.ImagePublicBaseURL) // gives /listings/uuid.jpg
+	expectedDiskPath := filepath.Join(s.Cfg.ImageStoragePath, expectedRelPathInURL) // testImageStorageBasePath + /listings/uuid.jpg
+
+	s.T().Logf("Expected image disk path: %s", expectedDiskPath)
+	_, err = os.Stat(expectedDiskPath)
+	s.NoError(err, "Image file should exist on disk at path: "+expectedDiskPath)
+
+	// Verify database record for listing_images
+	var dbImage listing.ListingImage
+	dbResult := s.DB.Where("listing_id = ?", createdListing.ID).First(&dbImage)
+	s.NoError(dbResult.Error, "Should find image record in DB")
+	s.Equal(createdListing.Images[0].ID, dbImage.ID)
+	s.NotEmpty(dbImage.ImagePath)
+	s.Equal(0, dbImage.SortOrder)
+	// Verify that dbImage.ImagePath corresponds to what's in expectedDiskPath (relative to storage path)
+	s.Equal(strings.TrimPrefix(expectedRelPathInURL, "/"), dbImage.ImagePath) // ImagePath is like "listings/uuid.jpg"
+}
+
+
+func (s *IntegrationTestSuite) TestCreateListing_WithMultipleImages() {
+	testUser, token := s.createUser("imguser2", "imguser2@example.com", "password", user.RoleUser)
+	cat := s.createCategory("Multi Image Category", "multi-image-cat")
+
+	tempImg1Path := createTempImageFile(s.T(), "test_multi_1.png", []byte("multi image one"))
+	defer os.Remove(tempImg1Path)
+	tempImg2Path := createTempImageFile(s.T(), "test_multi_2.gif", []byte("multi image two"))
+	defer os.Remove(tempImg2Path)
+
+	params := map[string]string{
+		"title":       "Listing with Multiple Images",
+		"description": "This listing has two awesome images.",
+		"category_id": cat.ID.String(),
+	}
+	fileParams := map[string][]string{
+		"images": {tempImg1Path, tempImg2Path},
+	}
+
+	req, err := CreateMultipartRequest("POST", "/api/v1/listings", params, fileParams)
+	s.Require().NoError(err)
+	req.Header.Set("Authorization", "Bearer "+token)
+
+	rr := httptest.NewRecorder()
+	s.Router.ServeHTTP(rr, req)
+
+	s.Equal(http.StatusCreated, rr.Code, "Response body: "+rr.Body.String())
+
+	var resp common.StandardResponse
+	json.Unmarshal(rr.Body.Bytes(), &resp)
+	var createdListing listing.ListingResponse
+	respDataBytes, _ := json.Marshal(resp.Data)
+	json.Unmarshal(respDataBytes, &createdListing)
+
+	s.Require().Len(createdListing.Images, 2, "Should have two images in response")
+	s.Equal(0, createdListing.Images[0].SortOrder)
+	s.Equal(1, createdListing.Images[1].SortOrder)
+
+	// Verify files and DB records (simplified checks here)
+	for _, imgResp := range createdListing.Images {
+		expectedRelPathInURL := strings.TrimPrefix(imgResp.ImageURL, s.Cfg.ImagePublicBaseURL)
+		expectedDiskPath := filepath.Join(s.Cfg.ImageStoragePath, expectedRelPathInURL)
+		_, err := os.Stat(expectedDiskPath)
+		s.NoError(err, "Image file should exist: "+expectedDiskPath)
+
+		var dbImgCount int64
+		s.DB.Model(&listing.ListingImage{}).Where("id = ?", imgResp.ID).Count(&dbImgCount)
+		s.Equal(int64(1), dbImgCount, "Image record should exist in DB for ID: "+imgResp.ID.String())
+	}
+}
+
+// TODO: Add more tests:
+// - TestCreateListing_NoImages
+// - TestUpdateListing_AddImages
+// - TestUpdateListing_RemoveImages
+// - TestUpdateListing_ReplaceImages (remove some, add some)
+// - TestDeleteListing_DeletesImageFiles

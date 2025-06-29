@@ -8,6 +8,7 @@ import (
 
 	"seattle_info_backend/internal/common"
 	"seattle_info_backend/internal/config"
+	"seattle_info_backend/internal/shared" // Added
 
 	// Mocking library like testify/mock can be added later:
 	// "github.com/stretchr/testify/assert"
@@ -71,6 +72,18 @@ func (m *MockUserRepository) FindByID(ctx context.Context, id uuid.UUID) (*User,
 func (m *MockUserRepository) FindByProvider(ctx context.Context, provider, providerID string) (*User, error) {
 	return nil, common.ErrNotFound
 }
+
+// SearchUsers implements a mock for the Repository interface.
+func (m *MockUserRepository) SearchUsers(ctx context.Context, params shared.UserSearchQuery) ([]User, *common.Pagination, error) {
+	// This is a mock implementation. For actual tests, you'd use testify/mock
+	// or provide specific logic based on params.
+	// For now, returning an empty slice and no error to satisfy the interface.
+	if params.Email != nil && *params.Email == "error@example.com" {
+		return nil, nil, errors.New("mock search error")
+	}
+	return []User{}, &common.Pagination{TotalItems: 0, CurrentPage: 1, PageSize: params.PageSize, TotalPages: 0}, nil
+}
+
 
 func TestUserService_GetOrCreateUserFromFirebaseClaims(t *testing.T) {
 	logger, _ := zap.NewDevelopment()

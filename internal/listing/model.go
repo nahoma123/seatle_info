@@ -100,10 +100,36 @@ type Listing struct {
 	BabysittingDetails *ListingDetailsBabysitting `gorm:"foreignKey:ListingID;references:ID;constraint:OnDelete:CASCADE;"`
 	HousingDetails     *ListingDetailsHousing     `gorm:"foreignKey:ListingID;references:ID;constraint:OnDelete:CASCADE;"`
 	EventDetails       *ListingDetailsEvents      `gorm:"foreignKey:ListingID;references:ID;constraint:OnDelete:CASCADE;"`
+	Images             []ListingImage             `gorm:"foreignKey:ListingID;constraint:OnDelete:CASCADE;"`
 }
 
 func (Listing) TableName() string {
 	return "listings"
+}
+
+// --- Listing Image Model ---
+type ListingImage struct {
+	ID        uuid.UUID `json:"id" gorm:"type:uuid;primaryKey;default:uuid_generate_v4()"`
+	ListingID uuid.UUID `json:"listing_id" gorm:"type:uuid;not null"`
+	ImagePath string    `json:"-" gorm:"type:text;not null"`      // Relative path within IMAGE_STORAGE_PATH, not directly exposed
+	ImageURL  string    `json:"image_url" gorm:"-"`               // Dynamically generated, not stored in DB
+	SortOrder int       `json:"sort_order" gorm:"default:0"`
+	CreatedAt time.Time `json:"created_at" gorm:"autoCreateTime"`
+	UpdatedAt time.Time `json:"updated_at" gorm:"autoUpdateTime"` // For GORM to auto-update
+}
+
+func (ListingImage) TableName() string {
+	return "listing_images"
+}
+
+// PopulateImageURL generates the full URL for an image.
+// It needs the base URL from config. This function would typically be called
+// in the service layer or when transforming the model to a response DTO.
+func (li *ListingImage) PopulateImageURL(baseURL string) {
+	if li.ImagePath != "" {
+		// Ensure no double slashes if baseURL already ends with / and ImagePath starts with /
+		li.ImageURL = strings.TrimSuffix(baseURL, "/") + "/" + strings.TrimPrefix(li.ImagePath, "/")
+	}
 }
 
 // --- Listing Detail Models ---
@@ -182,6 +208,8 @@ type CreateListingRequest struct {
 	BabysittingDetails *CreateListingBabysittingDetailsRequest `json:"babysitting_details,omitempty"`
 	HousingDetails     *CreateListingHousingDetailsRequest     `json:"housing_details,omitempty"`
 	EventDetails       *CreateListingEventDetailsRequest       `json:"event_details,omitempty"`
+	// Images are handled via multipart/form-data in the handler, not directly in this struct for JSON binding.
+	// The handler will need to manually process c.Request.MultipartForm.File["images"]
 }
 
 type UpdateListingRequest struct {
@@ -202,6 +230,15 @@ type UpdateListingRequest struct {
 	BabysittingDetails *CreateListingBabysittingDetailsRequest `json:"babysitting_details,omitempty"`
 	HousingDetails     *CreateListingHousingDetailsRequest     `json:"housing_details,omitempty"`
 	EventDetails       *CreateListingEventDetailsRequest       `json:"event_details,omitempty"`
+	// Images are handled via multipart/form-data in the handler for new uploads.
+	// Existing images to remove might be specified by their IDs.
+	RemoveImageIDs []uuid.UUID `json:"remove_image_ids,omitempty"`
+}
+
+type ListingImageResponse struct {
+	ID       uuid.UUID `json:"id"`
+	ImageURL string    `json:"image_url"`
+	SortOrder int       `json:"sort_order"`
 }
 
 type ListingResponse struct {
@@ -233,9 +270,10 @@ type ListingResponse struct {
 	BabysittingDetails *ListingDetailsBabysitting    `json:"babysitting_details,omitempty"`
 	HousingDetails     *ListingDetailsHousing        `json:"housing_details,omitempty"`
 	EventDetails       *ListingDetailsEvents         `json:"event_details,omitempty"`
+	Images             []ListingImageResponse        `json:"images,omitempty"`
 }
 
-func ToListingResponse(listing *Listing, isAuthenticated bool) ListingResponse {
+func ToListingResponse(listing *Listing, isAuthenticated bool, imageBaseURL string) ListingResponse {
 	sharedUser := user.DBToShared(listing.User) // Convert GORM user.User to shared.User
 	userResp := user.ToUserResponse(sharedUser) // Pass shared.User to ToUserResponse
 	catResp := category.ToCategoryResponse(&listing.Category)
@@ -271,6 +309,19 @@ func ToListingResponse(listing *Listing, isAuthenticated bool) ListingResponse {
 		BabysittingDetails: listing.BabysittingDetails,
 		HousingDetails:     listing.HousingDetails,
 		EventDetails:       listing.EventDetails,
+		// Images will be populated below
+	}
+
+	if len(listing.Images) > 0 {
+		resp.Images = make([]ListingImageResponse, len(listing.Images))
+		for i, img := range listing.Images {
+			img.PopulateImageURL(imageBaseURL) // Use the PopulateImageURL method
+			resp.Images[i] = ListingImageResponse{
+				ID:        img.ID,
+				ImageURL:  img.ImageURL,
+				SortOrder: img.SortOrder,
+			}
+		}
 	}
 
 	if isAuthenticated {

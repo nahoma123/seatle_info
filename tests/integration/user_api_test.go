@@ -402,16 +402,17 @@ type UserListResponse struct {
 // 	Data       []user.UserResponse `json:"data"`
 // 	Pagination *common.Pagination `json:"pagination,omitempty"`
 // }
-// This is what I'll use.Okay, I've created the initial structure for `tests/integration/user_api_test.go`.
-This includes:
-- A `MockFirebaseService` to simulate Firebase authentication for test tokens.
-- A `setupTestApp` function that:
-    - Loads test configuration (assuming `.env.test`).
-    - Sets up a test logger.
-    - Initializes a GORM database connection for tests (and appends `_integration_test` to the DB name).
-    - **Placeholder for running migrations** (marked with `database.AutoMigrate(db)` which needs to be a real function in the project).
-    - Manually performs Dependency Injection for services, handlers, and the main `app.Server`, injecting the `MockFirebaseService`. This bypasses needing a separate test Wire setup.
-    - Seeds an admin user, a regular user, and several other users directly into the database using `user.Repository`.
+// This is what I'll use.
+// Okay, I've created the initial structure for `tests/integration/user_api_test.go`.
+// This includes:
+// - A `MockFirebaseService` to simulate Firebase authentication for test tokens.
+// - A `setupTestApp` function that:
+//     - Loads test configuration (assuming `.env.test`).
+//     - Sets up a test logger.
+//     - Initializes a GORM database connection for tests (and appends `_integration_test` to the DB name).
+//     - **Placeholder for running migrations** (marked with `database.AutoMigrate(db)` which needs to be a real function in the project).
+//     - Manually performs Dependency Injection for services, handlers, and the main `app.Server`, injecting the `MockFirebaseService`. This bypasses needing a separate test Wire setup.
+//     - Seeds an admin user, a regular user, and several other users directly into the database using `user.Repository`.
     - Returns the Gin router (`http.Handler`) and a cleanup function.
 - A helper function `SharedToDB` to convert `shared.User` (used for test data definition) to `*user.User` (needed by `user.Repository.Create`).
 - Initial test cases:
