@@ -95,16 +95,10 @@ jobs:
         run: |
           ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i ~/.ssh/id_rsa ${SERVER_USER}@${SERVER_HOST} "bash -s" << 'EOF'
             set -e
-            echo "Changing to project directory..."
             cd ~/seatle_info
 
-            # --- THE BRUTE-FORCE FIX ---
-            # This command will stop and remove any containers defined in the
-            # docker-compose.yml file. It ensures we start from a clean slate.
-            # It DOES NOT delete your database volume.
             echo "Tearing down existing services to ensure a clean state..."
             sudo docker compose -f docker-compose.yml down
-            # ---------------------------
 
             echo "Logging into GHCR..."
             echo "${{ secrets.GITHUB_TOKEN }}" | sudo docker login ghcr.io -u "${{ github.actor }}" --password-stdin
@@ -116,11 +110,9 @@ jobs:
             sudo docker compose -f docker-compose.yml run --rm migrate
 
             echo "Starting services with docker-compose..."
-            # We no longer need --force-recreate because we just ran 'down'.
-            sudo docker compose -f docker--compose.yml up -d app
+            # THE TYPO FIX: It's docker-compose.yml (one hyphen), not docker--compose.yml.
+            sudo docker compose -f docker-compose.yml up -d app
 
             echo "Pruning old Docker images to save space..."
             sudo docker image prune -af
           EOF
-
-
