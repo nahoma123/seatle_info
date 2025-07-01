@@ -113,13 +113,12 @@ jobs:
             sudo docker pull ${IMAGE_NAME}:latest
 
             echo "Running database migrations..."
-            # This command now works because the copied docker-compose.yml contains the 'migrate' service
-            # and gives it access to the Firebase key and database connection string.
-            sudo docker-compose -f docker-compose.yml run --rm migrate migrate -path /migrations -database "$DB_SOURCE" up
+            # FIX #1: Add -E to preserve the exported environment variables for sudo
+            sudo -E docker-compose -f docker-compose.yml run --rm migrate migrate -path /migrations -database "$DB_SOURCE" up
 
             echo "Starting services with docker-compose..."
-            # FIX #3: Use --force-recreate to ensure the 'app' container is restarted with the new image.
-            sudo docker-compose -f docker-compose.yml up -d --force-recreate app
+            # FIX #2: Add -E here as well for consistency
+            sudo -E docker-compose -f docker-compose.yml up -d --force-recreate app
 
             echo "Pruning old Docker images to save space..."
             sudo docker image prune -af
