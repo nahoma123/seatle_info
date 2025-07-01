@@ -93,27 +93,32 @@ jobs:
 
       - name: SSH, Migrate, and Deploy on Server
         run: |
-          ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i ~/.ssh/id_rsa ${SERVER_USER}@${SERVER_HOST} "
-            export GHCR_USER='${{ env.GHCR_USER }}'
-            export GHCR_TOKEN='${{ env.GHCR_TOKEN }}'
-            export IMAGE_NAME='${{ env.IMAGE_NAME }}'
-            export DB_SOURCE='${{ env.DB_SOURCE }}'
-            bash -s
-          " << 'EOF'
+          # We no longer need to export variables!
+          # We only need to run the bash script on the server.
+          ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i ~/.ssh/id_rsa ${SERVER_USER}@${SERVER_HOST} "bash -s" << 'EOF'
             set -e
+
+            # The server's environment is now self-contained via the .env file.
+            echo "Changing to project directory..."
             cd ~/seatle_info
+
             echo "Logging into GHCR..."
-            echo "$GHCR_TOKEN" | sudo docker login ghcr.io -u "$GHCR_USER" --password-stdin
+            # Note: We need to pass the GHCR token just for the login command.
+            echo "${{ secrets.GITHUB_TOKEN }}" | sudo docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+
             echo "Pulling latest image from GHCR..."
-            sudo docker pull ${IMAGE_NAME}:latest
+            # Docker Compose will get IMAGE_NAME from the .env file
+            sudo docker-compose -f docker-compose.yml pull app
 
             echo "Running database migrations..."
-            # THE BULLETPROOF FIX: We pass the command directly on the command line.
-            # This is the most explicit way to do it and overrides everything else.
-            sudo -E docker-compose -f docker-compose.yml run --rm migrate migrate up
+            # The 'run' command will automatically load the .env file. No -E needed.
+            sudo docker-compose -f docker-compose.yml run --rm migrate
 
             echo "Starting services with docker-compose..."
-            sudo -E docker-compose -f docker-compose.yml up -d --force-recreate app
+            # The 'up' command also loads the .env file automatically.
+            sudo docker-compose -f docker-compose.yml up -d --force-recreate app
+
             echo "Pruning old Docker images to save space..."
             sudo docker image prune -af
           EOF
+
