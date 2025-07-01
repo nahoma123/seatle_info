@@ -24,9 +24,7 @@ services:
       retries: 5
 
   app:
-    # The image is built and pushed by GH Actions, then pulled on the server.
     image: ${IMAGE_NAME}:latest
-    # Always restart the app if it stops for any reason.
     restart: always
     container_name: seattle_info_app_prod
     ports:
@@ -42,7 +40,6 @@ services:
       - seattle_info_net_prod
 
   migrate:
-    # This service uses the exact same image as the main app.
     image: ${IMAGE_NAME}:latest
     env_file:
       - .env
@@ -53,8 +50,7 @@ services:
         condition: service_healthy
     networks:
       - seattle_info_net_prod
-    # This command is passed to the smart entrypoint script.
-    # The script sees "migrate" and runs the migration tool instead of the web server.
+    # This is the critical line that was missing from your server's file
     command: ["migrate", "up"]
 
 volumes:
