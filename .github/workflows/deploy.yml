@@ -112,16 +112,16 @@ jobs:
             echo "${{ secrets.GITHUB_TOKEN }}" | sudo docker login ghcr.io -u "${{ github.actor }}" --password-stdin
 
             echo "Pulling latest image from GHCR..."
-            # Docker Compose will get IMAGE_NAME from the .env file
-            sudo docker-compose -f docker-compose.yml pull app
+            # Use the new syntax (space instead of hyphen)
+            sudo docker compose -f docker-compose.yml pull app
 
             echo "Running database migrations..."
-            # The 'run' command will automatically load the .env file. No -E needed.
-            sudo docker-compose -f docker-compose.yml run --rm migrate
+            # Use the new syntax
+            sudo docker compose -f docker-compose.yml run --rm migrate
 
             echo "Starting services with docker-compose..."
-            # The 'up' command also loads the .env file automatically.
-            sudo docker-compose -f docker-compose.yml up -d --force-recreate app
+            # Use the new syntax
+            sudo docker compose -f docker-compose.yml up -d --force-recreate app
 
             echo "Pruning old Docker images to save space..."
             sudo docker image prune -af
