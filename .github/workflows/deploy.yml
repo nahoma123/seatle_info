@@ -75,11 +75,13 @@ jobs:
           echo "${SSH_PRIVATE_KEY}" > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
 
-      - name: Copy Firebase key to server
+      - name: Copy supporting files to server
         run: |
-          # THE FIX: This line was missing. It creates the file before we try to copy it.
-          echo "${FIREBASE_ADMIN_SDK_JSON}" > ./firebase-key-to-copy.json
+          # Copy the compose file from the repo to the server
+          scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i ~/.ssh/id_rsa ./docker-compose.yml ${SERVER_USER}@${SERVER_HOST}:~/seatle_info/docker-compose.yml
 
+          # Your existing step to copy the firebase key
+          echo "${FIREBASE_ADMIN_SDK_JSON}" > ./firebase-key-to-copy.json
           scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i ~/.ssh/id_rsa ./firebase-key-to-copy.json ${SERVER_USER}@${SERVER_HOST}:${FIREBASE_KEY_PATH_ON_SERVER}
           rm ./firebase-key-to-copy.json
 

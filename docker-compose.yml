@@ -1,15 +1,13 @@
-# This file should be located at /home/ubuntu/seatle_info/docker-compose.yml on your server
-
 version: '3.8'
 
 services:
   postgres_db:
+    # ... (no changes here)
     image: postgis/postgis:15-3.3
     container_name: seattle_info_postgres_prod
     restart: unless-stopped
     env_file:
       - .env
-    # The environment block is still needed for the healthcheck to work with variables
     environment:
       POSTGRES_USER: ${DB_USER}
       POSTGRES_PASSWORD: ${DB_PASSWORD}
@@ -25,12 +23,6 @@ services:
       retries: 5
 
   app:
-    # --- CHANGE #1: REMOVED THE 'build' BLOCK ---
-    # The image will be pulled from GHCR, not built on the server.
-    
-    # --- CHANGE #2: ADDED THE 'image' DIRECTIVE ---
-    # This tells Docker Compose to use the image pulled by your CI/CD script.
-    # The ${IMAGE_NAME} variable is passed in from your GitHub Actions workflow.
     image: ${IMAGE_NAME}:latest
     container_name: seattle_info_app_prod
     ports:
@@ -45,19 +37,18 @@ services:
     networks:
       - seattle_info_net_prod
 
-  # --- CHANGE #3: ADDED THE 'migrate' SERVICE ---
-  # This is the service your CI/CD script is trying to run.
   migrate:
-    # It uses the exact same image as your application.
     image: ${IMAGE_NAME}:latest
-    # It needs the same environment variables to connect to the database.
     env_file:
       - .env
-    # It needs to wait for the database to be ready before running.
+    # --- ADD THIS SECTION ---
+    # The migrate service also needs access to the Firebase key.
+    volumes:
+      - /home/ubuntu/seatle_info/config/firebase-key.json:/app/secret/firebase-key.json:ro
+    # ----------------------
     depends_on:
       postgres_db:
         condition: service_healthy
-    # It needs to be on the same network to communicate with the database.
     networks:
       - seattle_info_net_prod
 
