@@ -94,33 +94,25 @@ jobs:
       - name: SSH, Migrate, and Deploy on Server
         run: |
           ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i ~/.ssh/id_rsa ${SERVER_USER}@${SERVER_HOST} "
-            # Pass variables from the GitHub Actions runner to the SSH session
-            export GHCR_USER='${{ env.GHCR_USER }}'
-            export GHCR_TOKEN='${{ env.GHCR_TOKEN }}'
-            export IMAGE_NAME='${{ env.IMAGE_NAME }}'
+            # ... (the export commands are still the same)
             export DB_SOURCE='${{ env.DB_SOURCE }}'
             bash -s
           " << 'EOF'
             set -e
-
-            echo "Changing to project directory..."
             cd ~/seatle_info
-
             echo "Logging into GHCR..."
             echo "$GHCR_TOKEN" | sudo docker login ghcr.io -u "$GHCR_USER" --password-stdin
-
             echo "Pulling latest image from GHCR..."
             sudo docker pull ${IMAGE_NAME}:latest
 
             echo "Running database migrations..."
-            # THE FIX: Use --entrypoint to run ONLY the migration tool, not the web server.
-            # This forces the container to run the 'migrate' command and then exit.
-            sudo -E docker-compose -f docker-compose.yml run --rm --entrypoint "migrate" migrate -path /migrations -database "$DB_SOURCE" up
+            # THE FIX: The command is now much simpler.
+            # Docker Compose will use the 'entrypoint' and 'command' from the 'migrate' service definition.
+            sudo -E docker-compose -f docker-compose.yml run --rm migrate
 
             echo "Starting services with docker-compose..."
-            # This command is still correct because we WANT the web server to run here.
             sudo -E docker-compose -f docker-compose.yml up -d --force-recreate app
-
             echo "Pruning old Docker images to save space..."
             sudo docker image prune -af
           EOF
+
