@@ -93,10 +93,15 @@ jobs:
 
       - name: SSH, Migrate, and Deploy on Server
         run: |
-          # We no longer need to export variables!
-          # We only need to run the bash script on the server.
           ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i ~/.ssh/id_rsa ${SERVER_USER}@${SERVER_HOST} "bash -s" << 'EOF'
             set -e
+
+            # --- THE TEST COMMAND ---
+            echo "*****************************************************"
+            echo "VERIFYING SERVER CONNECTION: Listing home directory..."
+            ls -la ~
+            echo "*****************************************************"
+            # ------------------------
 
             # The server's environment is now self-contained via the .env file.
             echo "Changing to project directory..."
