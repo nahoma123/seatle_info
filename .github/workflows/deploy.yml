@@ -95,35 +95,32 @@ jobs:
         run: |
           ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i ~/.ssh/id_rsa ${SERVER_USER}@${SERVER_HOST} "bash -s" << 'EOF'
             set -e
-
-            # --- THE TEST COMMAND ---
-            echo "*****************************************************"
-            echo "VERIFYING SERVER CONNECTION: Listing home directory..."
-            ls -la ~
-            echo "*****************************************************"
-            # ------------------------
-
-            # The server's environment is now self-contained via the .env file.
             echo "Changing to project directory..."
             cd ~/seatle_info
 
+            # --- THE BRUTE-FORCE FIX ---
+            # This command will stop and remove any containers defined in the
+            # docker-compose.yml file. It ensures we start from a clean slate.
+            # It DOES NOT delete your database volume.
+            echo "Tearing down existing services to ensure a clean state..."
+            sudo docker compose -f docker-compose.yml down
+            # ---------------------------
+
             echo "Logging into GHCR..."
-            # Note: We need to pass the GHCR token just for the login command.
             echo "${{ secrets.GITHUB_TOKEN }}" | sudo docker login ghcr.io -u "${{ github.actor }}" --password-stdin
 
             echo "Pulling latest image from GHCR..."
-            # Use the new syntax (space instead of hyphen)
             sudo docker compose -f docker-compose.yml pull app
 
             echo "Running database migrations..."
-            # Use the new syntax
             sudo docker compose -f docker-compose.yml run --rm migrate
 
             echo "Starting services with docker-compose..."
-            # Use the new syntax
-            sudo docker compose -f docker-compose.yml up -d --force-recreate app
+            # We no longer need --force-recreate because we just ran 'down'.
+            sudo docker compose -f docker--compose.yml up -d app
 
             echo "Pruning old Docker images to save space..."
             sudo docker image prune -af
           EOF
+
 
