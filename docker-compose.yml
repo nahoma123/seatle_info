@@ -1,8 +1,9 @@
+# File: docker-compose.yml
+
 version: '3.8'
 
 services:
   postgres_db:
-    # ... (no changes here)
     image: postgis/postgis:15-3.3
     container_name: seattle_info_postgres_prod
     restart: unless-stopped
@@ -23,7 +24,10 @@ services:
       retries: 5
 
   app:
+    # The image is built and pushed by GH Actions, then pulled on the server.
     image: ${IMAGE_NAME}:latest
+    # Always restart the app if it stops for any reason.
+    restart: always
     container_name: seattle_info_app_prod
     ports:
       - "80:${SERVER_PORT:-8080}"
@@ -38,19 +42,20 @@ services:
       - seattle_info_net_prod
 
   migrate:
+    # This service uses the exact same image as the main app.
     image: ${IMAGE_NAME}:latest
     env_file:
       - .env
-    # --- ADD THIS SECTION ---
-    # The migrate service also needs access to the Firebase key.
     volumes:
       - /home/ubuntu/seatle_info/config/firebase-key.json:/app/secret/firebase-key.json:ro
-    # ----------------------
     depends_on:
       postgres_db:
         condition: service_healthy
     networks:
       - seattle_info_net_prod
+    # This command is passed to the smart entrypoint script.
+    # The script sees "migrate" and runs the migration tool instead of the web server.
+    command: ["migrate", "up"]
 
 volumes:
   postgres_data_prod:

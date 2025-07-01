@@ -1,51 +1,55 @@
 # File: Dockerfile
 
-# --- Builder Stage ---
+# --- STAGE 1: Builder ---
+# This stage builds the Go application and downloads necessary tools.
 FROM golang:1.23-alpine AS builder
 
-# Set working directory
 WORKDIR /app
 
-# --- NEW: Install curl so we can download the migrate tool ---
+# Install curl, which is needed to download the migrate tool.
 RUN apk --no-cache add curl
 
-# Copy go.mod and go.sum first to leverage Docker cache
+# Copy dependency files first to leverage Docker's layer caching.
 COPY go.mod go.sum ./
 RUN go mod download && go mod verify
 
-# Copy the entire project
+# Copy the rest of the source code.
 COPY . .
 
-# Build the application
-# The main.go and wire_gen.go are in cmd/server
+# Build the main application binary.
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
     go build -v -o /app/server ./cmd/server
 
-# --- NEW: Download and extract the migrate CLI tool ---
-# We download a specific version for reproducible builds.
+# Download and extract the golang-migrate CLI tool.
 RUN curl -L https://github.com/golang-migrate/migrate/releases/download/v4.17.1/migrate.linux-amd64.tar.gz | tar xvz
-# This will extract the 'migrate' executable to /app/migrate
+# This extracts the 'migrate' executable to /app/migrate
 
-# --- Release Stage ---
+
+# --- STAGE 2: Release ---
+# This stage creates the final, minimal production image.
 FROM alpine:latest
 
-# Install CA certificates for HTTPS calls, and timezone data
-RUN apk --no-cache add ca-certificates tzdata
+# Install necessary certificates for making HTTPS requests.
+RUN apk --no-cache add ca-certificates
 
 WORKDIR /app
 
-# --- NEW: Copy the migrate CLI from the builder stage ---
-# We place it in /usr/local/bin, which is in the system's $PATH,
-# so the 'migrate' command can be found.
-COPY --from=builder /app/migrate /usr/local/bin/
-
-# Copy the built application binary from the builder stage
+# Copy the compiled application binary from the builder stage.
 COPY --from=builder /app/server /app/server
 
-# --- NEW & IMPORTANT: Copy the migration files ---
-# Your deploy script runs migrations from the path "/migrations".
-# This line copies your local 'migrations' folder to that exact path inside the container.
+# Copy the migrate tool from the builder stage into a standard PATH directory.
+COPY --from=builder /app/migrate /usr/local/bin/
+
+# Copy the migration SQL files into the location expected by our entrypoint script.
 COPY migrations /migrations
 
-# Set the entrypoint for the container (this is for your main app)
-ENTRYPOINT ["/app/server"]
+# Copy the new entrypoint script and make it executable.
+COPY docker-entrypoint.sh /usr/local/bin/
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+
+# Set the new script as the container's entrypoint.
+ENTRYPOINT ["docker-entrypoint.sh"]
+
+# Define the default command to pass to the entrypoint script.
+# This will run the web server by default if no other command is specified.
+CMD ["/app/server"]
