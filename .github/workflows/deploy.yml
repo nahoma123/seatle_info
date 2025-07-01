@@ -1,4 +1,4 @@
-# .github/workflows/ci.yml
+# .github/workflows/deploy.yml
 
 name: Build and Deploy to EC2 via GHCR
 
@@ -58,6 +58,7 @@ jobs:
     needs: build-and-push-image
     environment: SERVER_HOST
 
+    # These environment variables will be available to all steps in this job
     env:
       SSH_PRIVATE_KEY: ${{ secrets.SERVER_SSH_PRIVATE_KEY }}
       SERVER_HOST: ${{ secrets.SERVER_HOST }}
@@ -69,18 +70,23 @@ jobs:
       GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
     steps:
+      # FIX #1: Checkout the repository code so we have access to docker-compose.yml
+      - name: Checkout code
+        uses: actions/checkout@v4
+
       - name: Set up SSH key
         run: |
           mkdir -p ~/.ssh
           echo "${SSH_PRIVATE_KEY}" > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
 
+      # FIX #2: Copy configuration files to the server to ensure it's always up-to-date
       - name: Copy supporting files to server
         run: |
-          # Copy the compose file from the repo to the server
+          # Copy the compose file from the repo to the server. This makes Git the source of truth.
           scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i ~/.ssh/id_rsa ./docker-compose.yml ${SERVER_USER}@${SERVER_HOST}:~/seatle_info/docker-compose.yml
 
-          # Your existing step to copy the firebase key
+          # Copy the Firebase key to the path specified in the compose file's volume mount
           echo "${FIREBASE_ADMIN_SDK_JSON}" > ./firebase-key-to-copy.json
           scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i ~/.ssh/id_rsa ./firebase-key-to-copy.json ${SERVER_USER}@${SERVER_HOST}:${FIREBASE_KEY_PATH_ON_SERVER}
           rm ./firebase-key-to-copy.json
@@ -88,6 +94,7 @@ jobs:
       - name: SSH, Migrate, and Deploy on Server
         run: |
           ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i ~/.ssh/id_rsa ${SERVER_USER}@${SERVER_HOST} "
+            # Pass variables from the GitHub Actions runner to the SSH session
             export GHCR_USER='${{ env.GHCR_USER }}'
             export GHCR_TOKEN='${{ env.GHCR_TOKEN }}'
             export IMAGE_NAME='${{ env.IMAGE_NAME }}'
@@ -96,11 +103,7 @@ jobs:
           " << 'EOF'
             set -e
 
-            # THE FIX: Restart Docker to ensure it's in a clean state and give the system a moment.
-            echo "Restarting Docker daemon to ensure a clean state..."
-            sudo systemctl restart docker
-            sleep 5 # Wait 5 seconds for the daemon to be ready.
-
+            echo "Changing to project directory..."
             cd ~/seatle_info
 
             echo "Logging into GHCR..."
@@ -110,12 +113,14 @@ jobs:
             sudo docker pull ${IMAGE_NAME}:latest
 
             echo "Running database migrations..."
+            # This command now works because the copied docker-compose.yml contains the 'migrate' service
+            # and gives it access to the Firebase key and database connection string.
             sudo docker-compose -f docker-compose.yml run --rm migrate migrate -path /migrations -database "$DB_SOURCE" up
 
             echo "Starting services with docker-compose..."
-            echo "Restarting services with docker-compose..."
+            # FIX #3: Use --force-recreate to ensure the 'app' container is restarted with the new image.
             sudo docker-compose -f docker-compose.yml up -d --force-recreate app
 
-            echo "Pruning old Docker images..."
+            echo "Pruning old Docker images to save space..."
             sudo docker image prune -af
           EOF
