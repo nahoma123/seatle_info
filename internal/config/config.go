@@ -96,8 +96,26 @@ func Load() (*Config, error) {
 	v.SetDefault("IMAGE_STORAGE_PATH", "./images") // Default path for storing images
 	v.SetDefault("IMAGE_PUBLIC_BASE_URL", "/static/images") // Default base URL for accessing images
 
+	// Set the name of the config file (without extension)
+	v.SetConfigFile(".env")
+	// Set the type of the config file
+	v.SetConfigType("env")
+	// Add the current directory to the paths Viper will search for the config file
+	v.AddConfigPath(".")
+
+	// Attempt to read the config file.
+	// We'll ignore the error if the file is not found,
+	// allowing the application to run without a .env file (e.g., in production).
+	if err := v.ReadInConfig(); err != nil {
+		if _, ok := err.(viper.ConfigFileNotFoundError); !ok {
+			// Config file was found but another error was produced
+			return nil, fmt.Errorf("error reading config file: %w", err)
+		}
+		// Config file not found; ignore error and proceed
+	}
+
+	// Load environment variables. These will override values from the .env file.
 	v.AutomaticEnv()
-	// Optional: v.SetConfigName("config"); v.AddConfigPath("."); v.ReadInConfig()
 
 	var cfg Config
 	if err := v.Unmarshal(&cfg); err != nil {
