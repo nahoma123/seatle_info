@@ -65,12 +65,8 @@ jobs:
       SERVER_USER: ${{ secrets.SERVER_USER }}
       FIREBASE_ADMIN_SDK_JSON: ${{ secrets.FIREBASE_ADMIN_SDK_JSON }}
       FIREBASE_KEY_PATH_ON_SERVER: ${{ secrets.FIREBASE_KEY_PATH_ON_SERVER }}
-      DB_SOURCE: ${{ secrets.DB_SOURCE }}
-      GHCR_USER: ${{ github.actor }}
-      GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
     steps:
-      # FIX #1: Checkout the repository code so we have access to docker-compose.yml
       - name: Checkout code
         uses: actions/checkout@v4
 
@@ -80,20 +76,21 @@ jobs:
           echo "${SSH_PRIVATE_KEY}" > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
 
-      # FIX #2: Copy configuration files to the server to ensure it's always up-to-date
+      - name: Add server to known_hosts for security
+        run: |
+          ssh-keyscan -H "${SERVER_HOST}" >> ~/.ssh/known_hosts
+
       - name: Copy supporting files to server
         run: |
-          # Copy the compose file from the repo to the server. This makes Git the source of truth.
-          scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i ~/.ssh/id_rsa ./docker-compose.yml ${SERVER_USER}@${SERVER_HOST}:~/seatle_info/docker-compose.yml
+          scp -i ~/.ssh/id_rsa ./docker-compose.yml ${SERVER_USER}@${SERVER_HOST}:~/seatle_info/docker-compose.yml
 
-          # Copy the Firebase key to the path specified in the compose file's volume mount
           echo "${FIREBASE_ADMIN_SDK_JSON}" > ./firebase-key-to-copy.json
-          scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i ~/.ssh/id_rsa ./firebase-key-to-copy.json ${SERVER_USER}@${SERVER_HOST}:${FIREBASE_KEY_PATH_ON_SERVER}
+          scp -i ~/.ssh/id_rsa ./firebase-key-to-copy.json ${SERVER_USER}@${SERVER_HOST}:${FIREBASE_KEY_PATH_ON_SERVER}
           rm ./firebase-key-to-copy.json
 
       - name: SSH, Migrate, and Deploy on Server
         run: |
-          ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i ~/.ssh/id_rsa ${SERVER_USER}@${SERVER_HOST} "bash -s" << 'EOF'
+          ssh -i ~/.ssh/id_rsa ${SERVER_USER}@${SERVER_HOST} "bash -s" << 'EOF'
             set -e
             cd ~/seatle_info
 
@@ -110,7 +107,6 @@ jobs:
             sudo docker compose -f docker-compose.yml run --rm migrate
 
             echo "Starting services with docker-compose..."
-            # THE TYPO FIX: It's docker-compose.yml (one hyphen), not docker--compose.yml.
             sudo docker compose -f docker-compose.yml up -d app
 
             echo "Pruning old Docker images to save space..."
