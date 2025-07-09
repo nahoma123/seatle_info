@@ -111,8 +111,8 @@ func (Listing) TableName() string {
 type ListingImage struct {
 	ID        uuid.UUID `json:"id" gorm:"type:uuid;primaryKey;default:uuid_generate_v4()"`
 	ListingID uuid.UUID `json:"listing_id" gorm:"type:uuid;not null"`
-	ImagePath string    `json:"-" gorm:"type:text;not null"`      // Relative path within IMAGE_STORAGE_PATH, not directly exposed
-	ImageURL  string    `json:"image_url" gorm:"-"`               // Dynamically generated, not stored in DB
+	ImagePath string    `json:"-" gorm:"type:text;not null"` // Relative path within IMAGE_STORAGE_PATH, not directly exposed
+	ImageURL  string    `json:"image_url" gorm:"-"`          // Dynamically generated, not stored in DB
 	SortOrder int       `json:"sort_order" gorm:"default:0"`
 	CreatedAt time.Time `json:"created_at" gorm:"autoCreateTime"`
 	UpdatedAt time.Time `json:"updated_at" gorm:"autoUpdateTime"` // For GORM to auto-update
@@ -191,27 +191,25 @@ type CreateListingEventDetailsRequest struct {
 }
 
 type CreateListingRequest struct {
-	CategoryID         uuid.UUID                               `json:"category_id" binding:"required"`
-	SubCategoryID      *uuid.UUID                              `json:"sub_category_id,omitempty"`
-	Title              string                                  `json:"title" binding:"required,min=5,max=255"`
-	Description        string                                  `json:"description" binding:"required,min=20"`
-	ContactName        *string                                 `json:"contact_name,omitempty" binding:"omitempty,max=150"`
-	ContactEmail       *string                                 `json:"contact_email,omitempty" binding:"omitempty,email,max=255"`
-	ContactPhone       *string                                 `json:"contact_phone,omitempty" binding:"omitempty,max=50"`
-	AddressLine1       *string                                 `json:"address_line1,omitempty" binding:"omitempty,max=255"`
-	AddressLine2       *string                                 `json:"address_line2,omitempty" binding:"omitempty,max=255"`
-	City               *string                                 `json:"city,omitempty" binding:"omitempty,max=100"`
-	State              *string                                 `json:"state,omitempty" binding:"omitempty,max=50"`
-	ZipCode            *string                                 `json:"zip_code,omitempty" binding:"omitempty,max=20"`
-	Latitude           *float64                                `json:"latitude,omitempty" form:"-" binding:"omitempty,latitude"`
-	Longitude          *float64                                `json:"longitude,omitempty" form:"-" binding:"omitempty,longitude"`
-	LatitudeStr        *string                                 `form:"latitude" json:"-"`
-	LongitudeStr       *string                                 `form:"longitude" json:"-"`
-	BabysittingDetails *CreateListingBabysittingDetailsRequest `json:"babysitting_details,omitempty"`
-	HousingDetails     *CreateListingHousingDetailsRequest     `json:"housing_details,omitempty"`
-	EventDetails       *CreateListingEventDetailsRequest       `json:"event_details,omitempty"`
-	// Images are handled via multipart/form-data in the handler, not directly in this struct for JSON binding.
-	// The handler will need to manually process c.Request.MultipartForm.File["images"]
+	CategoryID    uuid.UUID  `json:"category_id" validate:"required"`
+	SubCategoryID *uuid.UUID `json:"sub_category_id,omitempty"`
+	Title         string     `json:"title" validate:"required,min=5,max=255"`
+	Description   string     `json:"description" validate:"required,min=20"`
+	ContactName   *string    `json:"contact_name,omitempty" validate:"omitempty,max=150"`
+	ContactEmail  *string    `json:"contact_email,omitempty" validate:"omitempty,email,max=255"`
+	ContactPhone  *string    `json:"contact_phone,omitempty" validate:"omitempty,max=50"`
+	AddressLine1  *string    `json:"address_line1,omitempty" validate:"omitempty,max=255"`
+	AddressLine2  *string    `json:"address_line2,omitempty" validate:"omitempty,max=255"`
+	City          *string    `json:"city,omitempty" validate:"omitempty,max=100"`
+	State         *string    `json:"state,omitempty" validate:"omitempty,max=50"`
+	ZipCode       *string    `json:"zip_code,omitempty" validate:"omitempty,max=20"`
+	Latitude      *float64   `json:"latitude,omitempty" validate:"omitempty,latitude"`
+	Longitude     *float64   `json:"longitude,omitempty" validate:"omitempty,longitude"`
+
+	// Nested details are perfectly handled by JSON unmarshalling.
+	BabysittingDetails *CreateListingBabysittingDetailsRequest `json:"babysitting_details,omitempty" validate:"omitempty,dive"`
+	HousingDetails     *CreateListingHousingDetailsRequest     `json:"housing_details,omitempty" validate:"omitempty,dive"`
+	EventDetails       *CreateListingEventDetailsRequest       `json:"event_details,omitempty" validate:"omitempty,dive"`
 }
 
 type UpdateListingRequest struct {
@@ -240,8 +238,8 @@ type UpdateListingRequest struct {
 }
 
 type ListingImageResponse struct {
-	ID       uuid.UUID `json:"id"`
-	ImageURL string    `json:"image_url"`
+	ID        uuid.UUID `json:"id"`
+	ImageURL  string    `json:"image_url"`
 	SortOrder int       `json:"sort_order"`
 }
 

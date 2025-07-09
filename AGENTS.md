@@ -100,33 +100,7 @@ The Seattle Info project is a Go-based backend application that provides informa
 ## 5. Testing
 
 ### 5.1. Running Tests
-- **Run all unit tests:**
-  ```bash
-  go test $(go list ./... | grep -v /tests/integration)
-  ```
-  (This command attempts to exclude integration tests. Adjust if needed.)
-- **Run unit tests for a specific package:**
-  ```bash
-  go test ./internal/listing/...
-  ```
-- **Run all integration tests (`tests/integration`):**
-    1.  Ensure your `.env` file is fully configured, especially all `DB_*` variables. The `DB_HOST` for integration tests running locally against the Dockerized DB should be `localhost` (or `127.0.0.1`).
-    2.  Start the development database if not already running:
-        ```bash
-        docker-compose -f docker-compose.dev.yml up -d postgres_db
-        ```
-    3.  Apply all database migrations (see section 4.1 on Migrations for methods).
-    4.  Run the integration tests, ensuring they pick up the environment variables:
-        ```bash
-        go test ./tests/integration/...
-        ```
-    5.  To stop the database when done: `docker-compose -f docker-compose.dev.yml down` (or `stop postgres_db`).
-
-### 5.2. Writing Tests
-- Write unit tests for new functions, methods, and business logic. Place them in `_test.go` files alongside the code they test (e.g., `listing_service_test.go` for `listing_service.go`).
-- Write integration tests for API endpoints and service interactions that involve external dependencies like the database. Place these in the `tests/integration` directory.
-- Utilize the `testify/assert` and `testify/require` packages for assertions.
-- Strive for good test coverage. Mock dependencies for unit tests where appropriate.
+- for now only test conceptually and ensure that there are no build errors when running, go build ./... 
 
 ## 6. Committing and Submitting Changes
 

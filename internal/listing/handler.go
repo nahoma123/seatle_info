@@ -2,7 +2,9 @@
 package listing
 
 import (
+	"encoding/json"
 	"errors" // Go standard errors
+
 	// "mime/multipart" // Removed as direct usage isn't present; type is resolved via service interface
 	// "strconv" // Removed
 	// "seattle_info_backend/internal/auth" // REMOVED
@@ -90,83 +92,71 @@ func (h *Handler) createListing(c *gin.Context) {
 		return
 	}
 
-	// Max memory for multipart form (e.g., 10 MB per image, adjust as needed)
-	// If allowing multiple images, sum their potential max sizes.
-	// Let's assume max 5 images, 10MB each = 50MB total.
-	if err := c.Request.ParseMultipartForm(50 << 20); err != nil {
+	// Set a max memory limit for the multipart form
+	if err := c.Request.ParseMultipartForm(50 << 20); err != nil { // 50MB
 		h.logger.Warn("Create listing: Failed to parse multipart form", zap.Error(err), zap.String("userID", userID.String()))
 		common.RespondWithError(c, common.ErrBadRequest.WithDetails("Invalid request format or files too large: "+err.Error()))
 		return
 	}
 
+	// --- Step 1: Get the JSON data from the 'data' form field ---
+	jsonData := c.Request.FormValue("data")
+	if jsonData == "" {
+		common.RespondWithError(c, common.ErrBadRequest.WithDetails("Missing required 'data' field in multipart form."))
+		return
+	}
+
+	// --- Step 2: Unmarshal the JSON string into the request struct ---
 	var req CreateListingRequest
-	// Bind form fields to the request struct.
-	// For JSON fields within a multipart form, custom binding or manual parsing is often needed.
-	// Gin's c.ShouldBindWith(&req, binding.Form) or c.ShouldBind(&req) might work if fields are simple form data.
-	// If you have nested JSON objects (like BabysittingDetails), you might need to get them as strings
-	// and then json.Unmarshal them manually.
-	// For simplicity, let's assume form fields map directly or are handled by ShouldBind.
-	// This will likely need adjustment if complex JSON parts are sent alongside files.
+	if err := json.Unmarshal([]byte(jsonData), &req); err != nil {
+		h.logger.Warn(
+			"Create listing: Failed to unmarshal JSON data from 'data' field",
+			zap.Error(err),
+			zap.String("userID", userID.String()),
+			zap.String("rawData", jsonData), // Log the bad data for debugging
+		)
+		common.RespondWithError(c, common.ErrBadRequest.WithDetails("Invalid JSON format in 'data' field: "+err.Error()))
+		return
+	}
 
-	// A common pattern is to have JSON data in one form field, and files in others.
-	// e.g., form field "data" contains the JSON string for CreateListingRequest.
-	// And form field "images" contains the files.
-
-	// Let's try to bind the form values first.
-	// Note: This simple binding might not work for nested JSON structures if they are not sent as flattened form fields.
-	// You might need to use `c.Request.FormValue("field_name")` for each field and parse them.
-	// For complex nested JSON like `BabysittingDetails`, they might need to be sent as JSON strings
-	// in a form field and then unmarshalled.
-	// For now, let's assume flat structure for simplicity of this step, or that client sends them as form values.
-	// The `binding` tags in `CreateListingRequest` might need to be changed to `form:"..."` for this to work well.
-	// I will proceed assuming `ShouldBindWith(&req, binding.FormMultipart)` can map the fields.
-
-	if err := c.ShouldBindWith(&req, binding.FormMultipart); err != nil {
-		h.logger.Warn("Create listing: Invalid form data", zap.Error(err), zap.String("userID", userID.String()))
+	// --- Step 3: Manually validate the populated struct ---
+	if err := h.validator.Struct(req); err != nil { // Assuming h.validator exists
+		h.logger.Warn("Create listing: Validation failed", zap.Error(err), zap.String("userID", userID.String()))
 		var ve validator.ValidationErrors
 		if errors.As(err, &ve) {
+			// Use your existing validation error formatting helper
 			common.RespondWithError(c, common.NewValidationAPIError(common.FormatValidationErrors(ve)))
 			return
 		}
-		common.RespondWithError(c, common.ErrBadRequest.WithDetails("Invalid form data: "+err.Error()))
+		common.RespondWithError(c, common.ErrBadRequest.WithDetails("Invalid data: "+err.Error()))
 		return
 	}
 
-	// Manually parse LatitudeStr and LongitudeStr if they were provided in the form
-	// For JSON requests, Latitude and Longitude (*float64) would be bound directly.
-	// For FormMultipart, LatitudeStr and LongitudeStr (*string) are bound.
-	// This check ensures we only parse if the string versions have values,
-	// and avoids issues if the primary float fields were somehow populated by JSON binding.
-
-	if c.ContentType() == "multipart/form-data" {
-		var apiErr *common.APIError
-		req.Latitude, apiErr = parseOptionalFloatFromString(req.LatitudeStr, "latitude")
-		if apiErr != nil {
-			h.logger.Warn("Create listing: Invalid latitude value", zap.Error(apiErr), zap.String("userID", userID.String()), zap.Stringp("latitude", req.LatitudeStr))
-			common.RespondWithError(c, apiErr)
-			return
-		}
-
-		req.Longitude, apiErr = parseOptionalFloatFromString(req.LongitudeStr, "longitude")
-		if apiErr != nil {
-			h.logger.Warn("Create listing: Invalid longitude value", zap.Error(apiErr), zap.String("userID", userID.String()), zap.Stringp("longitude", req.LongitudeStr))
-			common.RespondWithError(c, apiErr)
-			return
-		}
-	}
-	// After this, req.Latitude and req.Longitude are populated correctly for both JSON and multipart/form-data
-
-	// Access uploaded files
+	// --- Step 4: Access the uploaded files ---
 	form := c.Request.MultipartForm
 	images := form.File["images"] // "images" is the field name for file uploads
 
-	// The service layer will handle the actual file saving and linking.
+	// --- (Your Original Request) Log the successfully parsed content ---
+	var fileInfo []string
+	if len(images) > 0 {
+		for _, file := range images {
+			fileInfo = append(fileInfo, fmt.Sprintf("%s (%d bytes)", file.Filename, file.Size))
+		}
+	}
+	h.logger.Info("Processing create listing request",
+		zap.String("userID", userID.String()),
+		zap.Any("payload", req), // This now correctly logs the entire nested struct
+		zap.Strings("uploadedFiles", fileInfo),
+	)
+
+	// --- Step 5: Pass data to the service layer ---
 	listing, err := h.service.CreateListing(c.Request.Context(), userID, req, images)
 	if err != nil {
-		// Assuming err from service is already an APIError or can be wrapped into one
+		// The service layer should return an error that can be handled by RespondWithError
 		common.RespondWithError(c, err)
 		return
 	}
+
 	common.RespondCreated(c, "Listing created successfully.", ToListingResponse(listing, true, h.cfg.ImagePublicBaseURL))
 }
 
