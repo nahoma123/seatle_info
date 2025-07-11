@@ -45,6 +45,7 @@ type Handler struct {
 	logger  *zap.Logger
 	cfg     *config.Config // Added to access ImagePublicBaseURL
 	// tokenService auth.TokenService // REMOVED
+	validator *validator.Validate
 }
 
 // NewHandler creates a new listing handler.
@@ -54,6 +55,7 @@ func NewHandler(service Service, logger *zap.Logger, cfg *config.Config) *Handle
 		logger:  logger,
 		cfg:     cfg, // Added
 		// tokenService: tokenService, // REMOVED
+		validator: validator.New(),
 	}
 }
 

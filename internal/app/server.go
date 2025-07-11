@@ -36,7 +36,7 @@ type Server struct {
 	// userService shared.Service // Stored if needed by other methods
 
 	// Handlers
-	userHandler     *user.Handler
+	userHandler         *user.Handler
 	authHandler         *auth.Handler
 	categoryHandler     *category.Handler
 	listingHandler      *listing.Handler
@@ -80,6 +80,19 @@ func NewServer(
 	corsConfig.AllowCredentials = true
 	corsConfig.ExposeHeaders = []string{"Content-Length", middleware.RequestIDHeader}
 	router.Use(cors.New(corsConfig))
+
+	// Serve static files (e.g., uploaded images)
+	// The path cfg.ImageStoragePath (e.g. "./images") will be the root for "/static"
+	// So, a request to "/static/listings/foo.jpg" would serve "./images/listings/foo.jpg"
+	// If ImageStoragePath is "./uploads", then "/static/images/listings/foo.jpg" serves "./uploads/images/listings/foo.jpg"
+	// Based on user's desire for URL /static/images/listings/:filename and storage path being the root of "images/listings"
+	// We serve cfg.ImageStoragePath as the root of /static.
+	// If cfg.ImageStoragePath = "./images", then GET /static/listings/file.jpg serves ./images/listings/file.jpg
+	// To achieve /static/images/listings/filename, and assuming ImageStoragePath is something like "./data_storage",
+	// and files are in "./data_storage/images/listings/", then router.StaticFS("/static", http.Dir(cfg.ImageStoragePath)) is correct.
+	// A request to /static/images/listings/foo.jpg will look for cfg.ImageStoragePath + "/images/listings/foo.jpg".
+	router.StaticFS("/static", http.Dir(cfg.ImageStoragePath))
+	logger.Info("Serving static files", zap.String("url_prefix", "/static"), zap.String("filesystem_root", cfg.ImageStoragePath))
 
 	// Create middleware instances
 	authMW := middleware.AuthMiddleware(firebaseService, userService, logger.Named("AuthMiddleware"))
@@ -129,11 +142,11 @@ func NewServer(
 	}
 
 	return &Server{
-		httpServer:       httpServer,
-		router:           router,
-		cfg:              cfg,
-		logger:           logger,
-		userHandler:      userHandler,
+		httpServer:          httpServer,
+		router:              router,
+		cfg:                 cfg,
+		logger:              logger,
+		userHandler:         userHandler,
 		authHandler:         authHandler,
 		categoryHandler:     categoryHandler,
 		listingHandler:      listingHandler,

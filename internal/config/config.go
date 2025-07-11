@@ -93,8 +93,8 @@ func Load() (*Config, error) {
 	v.SetDefault("FIREBASE_SERVICE_ACCOUNT_KEY_PATH", "")
 
 	// Image Storage
-	v.SetDefault("IMAGE_STORAGE_PATH", "./images") // Default path for storing images
-	v.SetDefault("IMAGE_PUBLIC_BASE_URL", "/static/images") // Default base URL for accessing images
+	v.SetDefault("IMAGE_STORAGE_PATH", "./images")   // Default path for storing images
+	v.SetDefault("IMAGE_PUBLIC_BASE_URL", "/static") // Default base URL for accessing images
 
 	// Set the name of the config file (without extension)
 	v.SetConfigFile(".env")

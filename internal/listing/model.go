@@ -207,9 +207,9 @@ type CreateListingRequest struct {
 	Longitude     *float64   `json:"longitude,omitempty" validate:"omitempty,longitude"`
 
 	// Nested details are perfectly handled by JSON unmarshalling.
-	BabysittingDetails *CreateListingBabysittingDetailsRequest `json:"babysitting_details,omitempty" validate:"omitempty,dive"`
-	HousingDetails     *CreateListingHousingDetailsRequest     `json:"housing_details,omitempty" validate:"omitempty,dive"`
-	EventDetails       *CreateListingEventDetailsRequest       `json:"event_details,omitempty" validate:"omitempty,dive"`
+	BabysittingDetails *CreateListingBabysittingDetailsRequest `json:"babysitting_details,omitempty" validate:"omitempty"`
+	HousingDetails     *CreateListingHousingDetailsRequest     `json:"housing_details,omitempty" validate:"omitempty"`
+	EventDetails       *CreateListingEventDetailsRequest       `json:"event_details,omitempty" validate:"omitempty"`
 }
 
 type UpdateListingRequest struct {
