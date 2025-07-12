@@ -7,8 +7,9 @@ on:
     branches:
       - main
 
+# THE FIX: Define IMAGE_NAME here at the top level to make it global.
+# All jobs in this workflow can now access it using ${{ env.IMAGE_NAME }}.
 env:
-  # This global variable is available to all jobs.
   IMAGE_NAME: ghcr.io/nahoma123/seatle_info
 
 jobs:
@@ -37,6 +38,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
+          # It automatically uses the global IMAGE_NAME variable
           images: ${{ env.IMAGE_NAME }}
           tags: |
             type=sha
@@ -58,78 +60,44 @@ jobs:
     needs: build-and-push-image
     environment: SERVER_HOST
 
-    # These environment variables will be available to all steps in this job
+    # FIXED: Hardcoded IMAGE_NAME instead of referencing env inside env block.
     env:
-      SSH_PRIVATE_KEY: ${{ secrets.SERVER_SSH_PRIVATE_KEY }}
+      PROD_DB_USER: ${{ secrets.DB_USER }}
+      PROD_DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+      PROD_DB_NAME: ${{ secrets.DB_NAME }}
+      PROD_FIREBASE_JSON: ${{ secrets.FIREBASE_ADMIN_SDK_JSON }}
+      GITHUB_LOGIN_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       SERVER_HOST: ${{ secrets.SERVER_HOST }}
       SERVER_USER: ${{ secrets.SERVER_USER }}
-      FIREBASE_ADMIN_SDK_JSON: ${{ secrets.FIREBASE_ADMIN_SDK_JSON }}
-      FIREBASE_KEY_PATH_ON_SERVER: ${{ secrets.FIREBASE_KEY_PATH_ON_SERVER }}
+      SSH_PRIVATE_KEY: ${{ secrets.SERVER_SSH_PRIVATE_KEY }}
+      IMAGE_NAME: ghcr.io/nahoma123/seatle_info
 
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Set up SSH key
+      - name: SSH, Create Env, Deploy, and Migrate
         run: |
           mkdir -p ~/.ssh
-          echo "${SSH_PRIVATE_KEY}" > ~/.ssh/id_rsa
+          echo "$SSH_PRIVATE_KEY" > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H "$SERVER_HOST" >> ~/.ssh/known_hosts
 
-      - name: Add server to known_hosts for security
-        run: |
-          ssh-keyscan -H "${SERVER_HOST}" >> ~/.ssh/known_hosts
-
-      - name: Copy supporting files to server
-        run: |
-          scp -i ~/.ssh/id_rsa ./docker-compose.yml ${SERVER_USER}@${SERVER_HOST}:~/seatle_info/docker-compose.yml
-
-          echo "${FIREBASE_ADMIN_SDK_JSON}" > ./firebase-key-to-copy.json
-          scp -i ~/.ssh/id_rsa ./firebase-key-to-copy.json ${SERVER_USER}@${SERVER_HOST}:${FIREBASE_KEY_PATH_ON_SERVER}
-          rm ./firebase-key-to-copy.json
-
-      - name: SSH, Create Env, Deploy, and Migrate
-        # THE FIX IS THIS PIPE CHARACTER -> |
-        run: |
-          ssh -i ~/.ssh/id_rsa ${SERVER_USER}@${SERVER_HOST} "bash -s" << 'EOF'
+          ssh -i ~/.ssh/id_rsa $SERVER_USER@$SERVER_HOST "bash -s" << 'EOF'
             set -e
             cd ~/seatle_info
-
-            echo "Ensuring config directory exists..."
             mkdir -p ./config
-
-            echo "Placing Firebase key in the correct location..."
-            echo "${FIREBASE_ADMIN_SDK_JSON}" > ./config/firebase-key.json
-
-            echo "Creating production .env file..."
-            cat > ./.env << EOL
-# --- Production Environment Variables ---
-DB_USER=${{ secrets.DB_USER }}
-DB_PASSWORD=${{ secrets.DB_PASSWORD }}
-DB_NAME=${{ secrets.DB_NAME }}
-DB_HOST=postgres_db
-DB_SSL_MODE=disable
-
-GIN_MODE=release
-SERVER_PORT=8080
-
-FIREBASE_SERVICE_ACCOUNT_KEY_PATH=/app/secret/firebase-key.json
-
-IMAGE_NAME=${{ env.IMAGE_NAME }}
-EOL
-
-            echo "Verifying .env file contents..."
+            echo "$PROD_FIREBASE_JSON" > ./config/firebase-key.json
+            > ./.env
+            echo "DB_USER=$PROD_DB_USER" >> ./.env
+            echo "DB_PASSWORD=$PROD_DB_PASSWORD" >> ./.env
+            echo "DB_NAME=$PROD_DB_NAME" >> ./.env
+            echo "DB_HOST=postgres_db" >> ./.env
+            echo "DB_SSL_MODE=disable" >> ./.env
+            echo "GIN_MODE=release" >> ./.env
+            echo "SERVER_PORT=8080" >> ./.env
+            echo "FIREBASE_SERVICE_ACCOUNT_KEY_PATH=/app/secret/firebase-key.json" >> ./.env
+            echo "IMAGE_NAME=$IMAGE_NAME" >> ./.env
             cat ./.env
-
-            echo "Logging into GHCR..."
-            echo "${{ secrets.GITHUB_TOKEN }}" | sudo docker login ghcr.io -u "${{ github.actor }}" --password-stdin
-
-            echo "Pulling latest images from GHCR..."
+            echo "$GITHUB_LOGIN_TOKEN" | sudo docker login ghcr.io -u "${{ github.actor }}" --password-stdin
             sudo docker compose pull
-
-            echo "Bringing up services with new images and configuration..."
             sudo docker compose up -d --force-recreate
-
-            echo "Pruning old Docker images to save space..."
             sudo docker image prune -af
           EOF
