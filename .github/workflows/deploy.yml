@@ -7,7 +7,7 @@ on:
     branches:
       - main
 
-# Global variable for the image name
+# This global variable is available to all jobs in the workflow.
 env:
   IMAGE_NAME: ghcr.io/nahoma123/seatle_info
 
@@ -77,8 +77,9 @@ jobs:
           mkdir -p ./config
           echo '${PROD_FIREBASE_JSON}' > ./config/firebase-key.json
 
-          echo "Creating production .env file to match existing DB..."
+          echo "Creating production .env file..."
           > ./.env
+          # --- Variables for the 'app' service ---
           echo "DB_USER=${PROD_DB_USER}" >> ./.env
           echo "DB_PASSWORD=${PROD_DB_PASSWORD}" >> ./.env
           echo "DB_NAME=${PROD_DB_NAME}" >> ./.env
@@ -88,6 +89,8 @@ jobs:
           echo "SERVER_PORT=8080" >> ./.env
           echo "FIREBASE_SERVICE_ACCOUNT_KEY_PATH=/app/secret/firebase-key.json" >> ./.env
           echo "IMAGE_NAME=${IMAGE_NAME}" >> ./.env
+          # --- THE FIX: Add the complete DB_SOURCE URL for the 'migrate' service ---
+          echo "DB_SOURCE=postgresql://${PROD_DB_USER}:${PROD_DB_PASSWORD}@postgres_db:5432/${PROD_DB_NAME}?sslmode=disable" >> ./.env
           
           echo "Logging into GitHub Container Registry..."
           echo '${GITHUB_LOGIN_TOKEN}' | sudo docker login ghcr.io -u '${{ github.actor }}' --password-stdin
@@ -95,14 +98,14 @@ jobs:
           echo "Pulling latest images..."
           sudo docker compose pull
           
-          echo "Deploying application..."
-          # We use --force-recreate to make sure the app container picks up the new image
+          echo "Deploying application with Docker Compose..."
+          # Use --remove-orphans to clean up old migrate containers
           sudo docker compose up -d --force-recreate --remove-orphans
           
           echo "Running database migrations..."
           sudo docker compose run --rm migrate
           
-          echo "Pruning old Docker images..."
+          echo "Pruning old Docker images to save space..."
           sudo docker image prune -af
           
           echo "--- Deployment successful! ---"
