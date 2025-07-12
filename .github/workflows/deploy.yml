@@ -54,9 +54,8 @@ jobs:
     needs: build-and-push-image
     environment: SERVER_HOST
 
-    # Define all secrets needed for this job's steps.
+    # This 'env' block remains correct.
     env:
-      IMAGE_NAME: ghcr.io/nahoma123/seatle_info
       PROD_DB_USER: ${{ secrets.DB_USER }}
       PROD_DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
       PROD_DB_NAME: ${{ secrets.DB_NAME }}
@@ -65,31 +64,42 @@ jobs:
       SERVER_HOST: ${{ secrets.SERVER_HOST }}
       SERVER_USER: ${{ secrets.SERVER_USER }}
       SSH_PRIVATE_KEY: ${{ secrets.SERVER_SSH_PRIVATE_KEY }}
+      IMAGE_NAME: ghcr.io/nahoma123/seatle_info
 
-    # These steps now mirror your original structure.
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Set up SSH key
+      - name: Deploy to Server via SSH
+        # This is now a single, unified step.
         run: |
+          # Prepare the SSH key locally on the runner
           mkdir -p ~/.ssh
           echo "$SSH_PRIVATE_KEY" > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
           ssh-keyscan -H "$SERVER_HOST" >> ~/.ssh/known_hosts
 
-      - name: Create Configuration on Server
-        run: |
-          ssh -i ~/.ssh/id_rsa $SERVER_USER@$SERVER_HOST "bash -s" << 'EOF'
+          # THE FIX: We pass the variables directly on the SSH command line.
+          # The single quotes around the values (e.g., '$PROD_DB_USER') are a
+          # security best practice to handle special characters in secrets.
+          ssh -i ~/.ssh/id_rsa $SERVER_USER@$SERVER_HOST \
+            "PROD_DB_USER='$PROD_DB_USER' \
+             PROD_DB_PASSWORD='$PROD_DB_PASSWORD' \
+             PROD_DB_NAME='$PROD_DB_NAME' \
+             PROD_FIREBASE_JSON='$PROD_FIREBASE_JSON' \
+             GITHUB_LOGIN_TOKEN='$GITHUB_LOGIN_TOKEN' \
+             IMAGE_NAME='$IMAGE_NAME' \
+             GITHUB_ACTOR='${{ github.actor }}' \
+             bash -s" << 'EOF'
+            # --- Everything below this line runs on your EC2 server ---
             set -e
-            # Ensure the directories exist on the server
+
+            echo "Navigating to project directory..."
             cd ~/seatle_info
+
+            echo "Ensuring config directory exists..."
             mkdir -p ./config
 
-            # Create the Firebase key file from the secret
+            echo "Placing Firebase key file..."
             echo "$PROD_FIREBASE_JSON" > ./config/firebase-key.json
 
-            # Create the .env file using the safe, line-by-line method
             echo "Creating production .env file..."
             > ./.env
             echo "DB_USER=$PROD_DB_USER" >> ./.env
@@ -101,28 +111,24 @@ jobs:
             echo "SERVER_PORT=8080" >> ./.env
             echo "FIREBASE_SERVICE_ACCOUNT_KEY_PATH=/app/secret/firebase-key.json" >> ./.env
             echo "IMAGE_NAME=$IMAGE_NAME" >> ./.env
-          EOF
 
-      - name: Deploy, Migrate, and Prune
-        run: |
-          ssh -i ~/.ssh/id_rsa $SERVER_USER@$SERVER_HOST "bash -s" << 'EOF'
-            set -e
-            cd ~/seatle_info
+            echo "Verifying .env file..."
+            cat ./.env
 
             echo "Logging into GHCR..."
-            echo "$GITHUB_LOGIN_TOKEN" | sudo docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+            echo "$GITHUB_LOGIN_TOKEN" | sudo docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
 
-            echo "Pulling latest images..."
+            echo "Pulling latest Docker images..."
             sudo docker compose pull
 
-            echo "Starting services..."
-            # Using --force-recreate ensures changes are applied
+            echo "Starting services with new configuration..."
             sudo docker compose up -d --force-recreate
 
             echo "Running database migrations..."
-            # THIS CRITICAL STEP IS NOW BACK IN THE WORKFLOW
             sudo docker compose run --rm migrate
 
-            echo "Pruning old Docker images to save space..."
+            echo "Pruning old Docker images..."
             sudo docker image prune -af
+
+            echo "Deployment successful!"
           EOF
