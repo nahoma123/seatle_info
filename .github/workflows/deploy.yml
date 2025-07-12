@@ -7,8 +7,7 @@ on:
     branches:
       - main
 
-# THE FIX: Define IMAGE_NAME here at the top level to make it global.
-# All jobs in this workflow can now access it using ${{ env.IMAGE_NAME }}.
+# This is correct: Define IMAGE_NAME globally for all jobs.
 env:
   IMAGE_NAME: ghcr.io/nahoma123/seatle_info
 
@@ -19,31 +18,26 @@ jobs:
     permissions:
       contents: read
       packages: write
-
+    # All steps from your original build job are here and correct.
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
-
       - name: Log in to GitHub Container Registry
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-
       - name: Extract metadata (tags, labels) for Docker
         id: meta
         uses: docker/metadata-action@v5
         with:
-          # It automatically uses the global IMAGE_NAME variable
           images: ${{ env.IMAGE_NAME }}
           tags: |
             type=sha
             type=raw,value=latest,enable={{is_default_branch}}
-
       - name: Build and push Docker image
         uses: docker/build-push-action@v6
         with:
@@ -60,8 +54,9 @@ jobs:
     needs: build-and-push-image
     environment: SERVER_HOST
 
-    # FIXED: Hardcoded IMAGE_NAME instead of referencing env inside env block.
+    # Define all secrets needed for this job's steps.
     env:
+      IMAGE_NAME: ghcr.io/nahoma123/seatle_info
       PROD_DB_USER: ${{ secrets.DB_USER }}
       PROD_DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
       PROD_DB_NAME: ${{ secrets.DB_NAME }}
@@ -70,21 +65,32 @@ jobs:
       SERVER_HOST: ${{ secrets.SERVER_HOST }}
       SERVER_USER: ${{ secrets.SERVER_USER }}
       SSH_PRIVATE_KEY: ${{ secrets.SERVER_SSH_PRIVATE_KEY }}
-      IMAGE_NAME: ghcr.io/nahoma123/seatle_info
 
+    # These steps now mirror your original structure.
     steps:
-      - name: SSH, Create Env, Deploy, and Migrate
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up SSH key
         run: |
           mkdir -p ~/.ssh
           echo "$SSH_PRIVATE_KEY" > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
           ssh-keyscan -H "$SERVER_HOST" >> ~/.ssh/known_hosts
 
+      - name: Create Configuration on Server
+        run: |
           ssh -i ~/.ssh/id_rsa $SERVER_USER@$SERVER_HOST "bash -s" << 'EOF'
             set -e
+            # Ensure the directories exist on the server
             cd ~/seatle_info
             mkdir -p ./config
+
+            # Create the Firebase key file from the secret
             echo "$PROD_FIREBASE_JSON" > ./config/firebase-key.json
+
+            # Create the .env file using the safe, line-by-line method
+            echo "Creating production .env file..."
             > ./.env
             echo "DB_USER=$PROD_DB_USER" >> ./.env
             echo "DB_PASSWORD=$PROD_DB_PASSWORD" >> ./.env
@@ -95,9 +101,28 @@ jobs:
             echo "SERVER_PORT=8080" >> ./.env
             echo "FIREBASE_SERVICE_ACCOUNT_KEY_PATH=/app/secret/firebase-key.json" >> ./.env
             echo "IMAGE_NAME=$IMAGE_NAME" >> ./.env
-            cat ./.env
+          EOF
+
+      - name: Deploy, Migrate, and Prune
+        run: |
+          ssh -i ~/.ssh/id_rsa $SERVER_USER@$SERVER_HOST "bash -s" << 'EOF'
+            set -e
+            cd ~/seatle_info
+
+            echo "Logging into GHCR..."
             echo "$GITHUB_LOGIN_TOKEN" | sudo docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+
+            echo "Pulling latest images..."
             sudo docker compose pull
+
+            echo "Starting services..."
+            # Using --force-recreate ensures changes are applied
             sudo docker compose up -d --force-recreate
+
+            echo "Running database migrations..."
+            # THIS CRITICAL STEP IS NOW BACK IN THE WORKFLOW
+            sudo docker compose run --rm migrate
+
+            echo "Pruning old Docker images to save space..."
             sudo docker image prune -af
           EOF
