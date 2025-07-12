@@ -88,27 +88,55 @@ jobs:
           scp -i ~/.ssh/id_rsa ./firebase-key-to-copy.json ${SERVER_USER}@${SERVER_HOST}:${FIREBASE_KEY_PATH_ON_SERVER}
           rm ./firebase-key-to-copy.json
 
-      - name: SSH, Migrate, and Deploy on Server
+      - name: SSH, Create Env, Deploy, and Migrate
         run: |
           ssh -i ~/.ssh/id_rsa ${SERVER_USER}@${SERVER_HOST} "bash -s" << 'EOF'
             set -e
             cd ~/seatle_info
 
-            echo "Tearing down existing services to ensure a clean state..."
-            sudo docker compose -f docker-compose.yml down
+            echo "Ensuring config directory exists..."
+            # This path matches the host-side path in your docker-compose.yml volumes
+            mkdir -p ./config
+
+            echo "Placing Firebase key in the correct location..."
+            # The destination path ./config/firebase-key.json matches what your compose file expects
+            echo "${FIREBASE_ADMIN_SDK_JSON}" > ./config/firebase-key.json
+
+            echo "Creating production .env file with correct values..."
+            # This command creates the .env file that docker-compose will read
+            cat > ./.env << EOL
+            # --- Production Environment Variables ---
+            # These values come directly from your new GitHub secrets
+            DB_USER=${{ secrets.DB_USER }}
+            DB_PASSWORD=${{ secrets.DB_PASSWORD }}
+            DB_NAME=${{ secrets.DB_NAME }}
+
+            # This MUST be the service name from docker-compose.yml for container networking
+            DB_HOST=postgres_db
+            DB_SSL_MODE=disable
+
+            GIN_MODE=release
+            SERVER_PORT=8080
+
+            # This path MUST match the container-side path from the docker-compose.yml volume mount
+            FIREBASE_SERVICE_ACCOUNT_KEY_PATH=/app/secret/firebase-key.json
+
+            # This variable is needed by the 'image:' tag in docker-compose.yml
+            IMAGE_NAME=${{ env.IMAGE_NAME }}
+            EOL
 
             echo "Logging into GHCR..."
             echo "${{ secrets.GITHUB_TOKEN }}" | sudo docker login ghcr.io -u "${{ github.actor }}" --password-stdin
 
-            echo "Pulling latest image from GHCR..."
-            sudo docker compose -f docker-compose.yml pull app
+            echo "Pulling latest images from GHCR..."
+            # Docker Compose will automatically find and use the .env file we just created
+            sudo docker compose pull
 
-            echo "Running database migrations..."
-            sudo docker compose -f docker-compose.yml run --rm migrate
-
-            echo "Starting services with docker-compose..."
-            sudo docker compose -f docker-compose.yml up -d app
+            echo "Bringing up services with new images and configuration..."
+            # This command tears down old containers and starts new ones with the fresh config
+            sudo docker compose up -d --force-recreate
 
             echo "Pruning old Docker images to save space..."
             sudo docker image prune -af
           EOF
+
