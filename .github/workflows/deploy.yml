@@ -7,12 +7,12 @@ on:
     branches:
       - main
 
-# This global variable is available to all jobs in the workflow.
 env:
   IMAGE_NAME: ghcr.io/nahoma123/seatle_info
 
 jobs:
   build-and-push-image:
+    # ... (This job remains unchanged and is correct)
     name: Build Docker image and push to GHCR
     runs-on: ubuntu-latest
     permissions:
@@ -51,10 +51,8 @@ jobs:
     name: Deploy to EC2 instance
     runs-on: ubuntu-latest
     needs: build-and-push-image
-    # This tells GitHub to use the SERVER_HOST environment and its secrets
     environment: SERVER_HOST
 
-    # This block maps the secrets to variables for the 'run' step
     env:
       PROD_DB_USER: ${{ secrets.DB_USER }}
       PROD_DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
@@ -69,17 +67,19 @@ jobs:
     steps:
       - name: Deploy to Server via SSH
         run: |
-          # Creates a local script file on the runner to avoid YAML/SSH issues
           cat << SCRIPT_TO_RUN_ON_SERVER > ./remote_script.sh
           set -e
           echo "--- Script starting on remote server ---"
           cd ~/seatle_info
+          
+          echo "Ensuring persistent directories exist..."
           mkdir -p ./config
+          # --- ADD THIS LINE ---
+          mkdir -p ./images/listings
+          
+          echo "Placing secrets and config files..."
           echo '${PROD_FIREBASE_JSON}' > ./config/firebase-key.json
-
-          echo "Creating production .env file..."
           > ./.env
-          # --- Variables for the 'app' service ---
           echo "DB_USER=${PROD_DB_USER}" >> ./.env
           echo "DB_PASSWORD=${PROD_DB_PASSWORD}" >> ./.env
           echo "DB_NAME=${PROD_DB_NAME}" >> ./.env
@@ -89,7 +89,6 @@ jobs:
           echo "SERVER_PORT=8080" >> ./.env
           echo "FIREBASE_SERVICE_ACCOUNT_KEY_PATH=/app/secret/firebase-key.json" >> ./.env
           echo "IMAGE_NAME=${IMAGE_NAME}" >> ./.env
-          # --- THE FIX: Add the complete DB_SOURCE URL for the 'migrate' service ---
           echo "DB_SOURCE=postgresql://${PROD_DB_USER}:${PROD_DB_PASSWORD}@postgres_db:5432/${PROD_DB_NAME}?sslmode=disable" >> ./.env
           
           echo "Logging into GitHub Container Registry..."
@@ -99,13 +98,12 @@ jobs:
           sudo docker compose pull
           
           echo "Deploying application with Docker Compose..."
-          # Use --remove-orphans to clean up old migrate containers
           sudo docker compose up -d --force-recreate --remove-orphans
           
           echo "Running database migrations..."
           sudo docker compose run --rm migrate
           
-          echo "Pruning old Docker images to save space..."
+          echo "Pruning old Docker images..."
           sudo docker image prune -af
           
           echo "--- Deployment successful! ---"
