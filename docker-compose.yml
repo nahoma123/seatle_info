@@ -36,6 +36,8 @@ services:
       - .env
     volumes:
       - /home/ubuntu/seatle_info/config/firebase-key.json:/app/secret/firebase-key.json:ro
+      - ./.env:/app/.env:ro
+
     networks:
       - seattle_info_net_prod
 
