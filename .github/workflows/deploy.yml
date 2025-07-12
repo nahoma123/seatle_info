@@ -1,3 +1,5 @@
+# .github/workflows/deploy.yml
+
 name: Build and Deploy to EC2 via GHCR
 
 on:
@@ -5,13 +7,12 @@ on:
     branches:
       - main
 
-# Global variable for the image name
+# This global variable is available to all jobs in the workflow.
 env:
   IMAGE_NAME: ghcr.io/nahoma123/seatle_info
 
 jobs:
   build-and-push-image:
-    # ... (This job remains unchanged and is correct)
     name: Build Docker image and push to GHCR
     runs-on: ubuntu-latest
     permissions:
@@ -20,14 +21,17 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
+
       - name: Log in to GitHub Container Registry
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Extract metadata (tags, labels) for Docker
         id: meta
         uses: docker/metadata-action@v5
@@ -36,6 +40,7 @@ jobs:
           tags: |
             type=sha
             type=raw,value=latest,enable={{is_default_branch}}
+
       - name: Build and push Docker image
         uses: docker/build-push-action@v6
         with:
@@ -50,10 +55,10 @@ jobs:
     name: Deploy to EC2 instance
     runs-on: ubuntu-latest
     needs: build-and-push-image
-    # This line is critical: it tells GitHub to use the SERVER_HOST environment and its secrets
+    # This critical line tells GitHub to use the 'SERVER_HOST' environment and its associated secrets.
     environment: SERVER_HOST
 
-    # The 'env' block makes the secrets available as shell variables
+    # This block maps the secrets from the environment to variables usable by the 'run' step.
     env:
       PROD_DB_USER: ${{ secrets.DB_USER }}
       PROD_DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
@@ -68,20 +73,63 @@ jobs:
     steps:
       - name: Deploy to Server via SSH
         run: |
-          # We create a local script file on the runner...
+          # The "cat << SCRIPT_TO_RUN ..." syntax creates a shell script file locally on the runner.
+          # This avoids all YAML and SSH quoting issues.
           cat << SCRIPT_TO_RUN_ON_SERVER > ./remote_script.sh
-          # ...the 'set -e' command ensures the script will exit immediately if a command fails
+          # 'set -e' ensures the script will exit immediately if any command fails.
           set -e
           
-          # All commands below will be written into the script file
+          echo "--- Script starting on remote server ---"
+          
+          # Navigate to the project directory
           cd ~/seatle_info
+          
+          # Create necessary directories
           mkdir -p ./config
+          
+          # Create the Firebase key file from the secret variable
           echo '${PROD_FIREBASE_JSON}' > ./config/firebase-key.json
 
           echo "Creating production .env file..."
+          # Create a new, empty .env file (or overwrite the old one)
           > ./.env
+          # Append each configuration line to the .env file
           echo "DB_USER=${PROD_DB_USER}" >> ./.env
           echo "DB_PASSWORD=${PROD_DB_PASSWORD}" >> ./.env
           echo "DB_NAME=${PROD_DB_NAME}" >> ./.env
           echo "DB_HOST=postgres_db" >> ./.env
-          echo "DB_SSL_MODE=disable" >> ./.### What This Accomplishes
+          echo "DB_SSL_MODE=disable" >> ./.env
+          echo "GIN_MODE=release" >> ./.env
+          echo "SERVER_PORT=8080" >> ./.env
+          echo "FIREBASE_SERVICE_ACCOUNT_KEY_PATH=/app/secret/firebase-key.json" >> ./.env
+          echo "IMAGE_NAME=${IMAGE_NAME}" >> ./.env
+          
+          echo "Logging into GitHub Container Registry..."
+          echo '${GITHUB_LOGIN_TOKEN}' | sudo docker login ghcr.io -u '${{ github.actor }}' --password-stdin
+          
+          echo "Pulling latest images..."
+          sudo docker compose pull
+          
+          echo "Deploying application with Docker Compose..."
+          # --force-recreate ensures new containers are built with the new image and config
+          sudo docker compose up -d --force-recreate
+          
+          echo "Running database migrations..."
+          sudo docker compose run --rm migrate
+          
+          echo "Pruning old Docker images to save space..."
+          sudo docker image prune -af
+          
+          echo "--- Deployment successful! ---"
+          SCRIPT_TO_RUN_ON_SERVER
+
+          # This block sets up the SSH key and then executes the script we just created.
+          echo "Preparing to connect to server..."
+          mkdir -p ~/.ssh
+          echo "${SSH_PRIVATE_KEY}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H "${SERVER_HOST}" >> ~/.ssh/known_hosts
+          
+          echo "Executing script on remote server..."
+          # The 'bash -s' command reads and executes the script from standard input.
+          ssh -i ~/.ssh/id_rsa ${SERVER_USER}@${SERVER_HOST} 'bash -s' < ./remote_script.sh
