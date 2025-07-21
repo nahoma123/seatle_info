@@ -415,7 +415,6 @@ func (r *GORMRepository) GetRecentListings(ctx context.Context, page, pageSize i
 		Joins("JOIN categories ON categories.id = listings.category_id").
 		Where("categories.slug != ?", "events"). // Exclude events
 		Where("listings.status = ?", StatusActive).
-		Where("listings.is_admin_approved = ?", true).
 		Where("listings.expires_at > ?", time.Now())
 
 	// Note: currentUserID is passed but not used in the original query.
@@ -572,6 +571,14 @@ func (r *GORMRepository) FindByUserID(ctx context.Context, userID uuid.UUID, que
 	// Optional filter by Status
 	if query.Status != nil && *query.Status != "" {
 		dbQuery = dbQuery.Where("listings.status = ?", *query.Status)
+	} else { // No specific status provided
+		if query.IncludeExpired {
+			// Show active, pending, AND expired. Exclude rejected/admin_removed.
+			dbQuery = dbQuery.Where("listings.status IN (?)", []ListingStatus{StatusActive, StatusPendingApproval, StatusExpired})
+		} else {
+			// Default: only show active or pending, exclude expired
+			dbQuery = dbQuery.Where("listings.status IN (?)", []ListingStatus{StatusActive, StatusPendingApproval})
+		}
 	}
 
 	// Optional filter by CategorySlug

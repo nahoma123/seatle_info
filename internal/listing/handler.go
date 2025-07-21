@@ -229,7 +229,7 @@ func (h *Handler) getMyListings(c *gin.Context) {
 	}
 
 	var query UserListingsQuery
-	// Bind query parameters like status, category_slug
+	// Bind query parameters like status, category_slug, and include_expired
 	if err := c.ShouldBindQuery(&query); err != nil {
 		h.logger.Warn("Get my listings: Invalid query parameters", zap.Error(err), zap.String("userID", userID.String()))
 		common.RespondWithError(c, common.ErrBadRequest.WithDetails("Invalid query parameters: "+err.Error()))

@@ -355,6 +355,7 @@ type ListingSearchQuery struct {
 
 type UserListingsQuery struct {
 	common.PaginationQuery
-	Status       *string `form:"status"`
-	CategorySlug *string `form:"category_slug"`
+	Status        *string `form:"status"`
+	CategorySlug  *string `form:"form:category_slug"`
+	IncludeExpired bool   `form:"include_expired"`
 }
