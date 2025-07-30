@@ -611,6 +611,8 @@ func (s *ServiceImplementation) SearchListings(ctx context.Context, query Listin
 
 // GetUserListings retrieves listings for a specific user.
 func (s *ServiceImplementation) GetUserListings(ctx context.Context, userID uuid.UUID, query UserListingsQuery) ([]Listing, *common.Pagination, error) {
+	// Set IncludeExpired to true by default for user's own listings
+	query.IncludeExpired = true
 	listings, pagination, err := s.repo.FindByUserID(ctx, userID, query)
 	if err != nil {
 		s.logger.Error("Failed to get user listings from repository",
