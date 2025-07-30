@@ -59,7 +59,7 @@ func NewService(
 	fileStorageService *filestorage.FileStorageService, // Added
 	cfg *config.Config,
 	logger *zap.Logger,
-) Service {
+) Service { 
 	return &ServiceImplementation{
 		repo:                repo,
 		userRepo:            userRepo,
