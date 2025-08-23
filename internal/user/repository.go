@@ -20,6 +20,7 @@ type Repository interface {
 	FindByEmail(ctx context.Context, email string) (*User, error)
 	FindByID(ctx context.Context, id uuid.UUID) (*User, error)
 	Update(ctx context.Context, user *User) error
+	Delete(ctx context.Context, id uuid.UUID) error
 	FindByProvider(ctx context.Context, authProvider string, providerID string) (*User, error)
 	FindByFirebaseUID(ctx context.Context, firebaseUID string) (*User, error)
 	SearchUsers(ctx context.Context, query shared.UserSearchQuery) ([]User, *common.Pagination, error)
@@ -176,6 +177,22 @@ func (r *GORMRepository) Update(ctx context.Context, user *User) error {
 			return common.ErrConflict.WithDetails("Update failed due to a conflict (e.g., email already taken or social account already linked).")
 		}
 		return err
+	}
+	return nil
+}
+
+// Delete removes a user record from the database by their ID.
+func (r *GORMRepository) Delete(ctx context.Context, id uuid.UUID) error {
+	// GORM's Delete method works with a model instance or by providing a primary key.
+	// Using .Where() ensures we are deleting exactly the user we intend to.
+	// The ON DELETE CASCADE constraint in the DB will handle associated listings.
+	result := r.db.WithContext(ctx).Where("id = ?", id).Delete(&User{})
+	if result.Error != nil {
+		return result.Error
+	}
+	// Check if any row was actually deleted.
+	if result.RowsAffected == 0 {
+		return common.ErrNotFound.WithDetails("User not found with this ID for deletion.")
 	}
 	return nil
 }

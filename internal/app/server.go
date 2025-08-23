@@ -63,6 +63,7 @@ func NewServer(
 	db *gorm.DB, // Added db *gorm.DB
 	firebaseService *firebase.FirebaseService,
 	userService shared.Service,
+	blocklistService auth.TokenBlocklistService, // Add blocklist service
 ) (*Server, error) {
 	gin.SetMode(cfg.GinMode)
 	router := gin.New()
@@ -95,7 +96,7 @@ func NewServer(
 	logger.Info("Serving static files", zap.String("url_prefix", "/static"), zap.String("filesystem_root", cfg.ImageStoragePath))
 
 	// Create middleware instances
-	authMW := middleware.AuthMiddleware(firebaseService, userService, logger.Named("AuthMiddleware"))
+	authMW := middleware.AuthMiddleware(firebaseService, userService, blocklistService, logger.Named("AuthMiddleware"))
 	adminRoleMW := middleware.RoleAuthMiddleware(common.RoleAdmin) // Use common.RoleAdmin
 
 	// --- Setup Routes ---

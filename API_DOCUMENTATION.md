@@ -127,6 +127,19 @@ Manages user profiles. User registration is now handled by the client applicatio
         ```
     *   `500 Internal Server Error`.
 
+### `DELETE /api/v1/users/me`
+
+*   **Description**: Deletes the currently authenticated user's account and all associated data. This is a destructive and irreversible action.
+*   **Auth**: Bearer Token (Firebase ID Token)
+*   **Request Body**: None
+*   **Headers**:
+    *   `Authorization: Bearer <FIREBASE_ID_TOKEN>` (Required)
+*   **Response**: `204 No Content`
+    *   Indicates the user's account and data have been successfully deleted.
+*   **Error Responses**:
+    *   `401 Unauthorized`: If the token is missing, invalid, expired, or has been blocklisted.
+    *   `500 Internal Server Error`: If an error occurred on the server during the deletion process.
+
 ### `GET /api/v1/users`
 
 *   **Description**: Retrieves a paginated list of users. Allows filtering by email, name, and role. This is an admin-only endpoint.

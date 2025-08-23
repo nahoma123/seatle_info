@@ -42,6 +42,7 @@ type Service interface {
 	GetOrCreateUserFromFirebaseClaims(ctx context.Context, firebaseToken *firebaseauth.Token) (usr *User, wasCreated bool, err error)
 	GetUserByFirebaseUID(ctx context.Context, firebaseUID string) (*User, error)
 	SearchUsers(ctx context.Context, query UserSearchQuery) ([]*User, *common.Pagination, error) // Now uses shared.UserSearchQuery
+	DeleteUser(ctx context.Context, id uuid.UUID) error
 }
 
 // Obsolete structs and interfaces related to old JWT/OAuth system are removed below.

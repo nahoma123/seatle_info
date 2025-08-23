@@ -2,7 +2,6 @@ package notification
 
 import (
 	"seattle_info_backend/internal/common"
-	"seattle_info_backend/internal/middleware" // For GetUserIDFromContext
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -30,7 +29,7 @@ func (h *Handler) RegisterRoutes(router *gin.RouterGroup) {
 }
 
 func (h *Handler) getNotifications(c *gin.Context) {
-	userID := middleware.GetUserIDFromContext(c)
+	userID := common.GetUserIDFromContext(c)
 	if userID == uuid.Nil {
 		common.RespondWithError(c, common.ErrUnauthorized.WithDetails("User ID not found in token."))
 		return
@@ -48,7 +47,7 @@ func (h *Handler) getNotifications(c *gin.Context) {
 }
 
 func (h *Handler) markNotificationAsRead(c *gin.Context) {
-	userID := middleware.GetUserIDFromContext(c)
+	userID := common.GetUserIDFromContext(c)
 	if userID == uuid.Nil {
 		common.RespondWithError(c, common.ErrUnauthorized.WithDetails("User ID not found in token."))
 		return
@@ -71,7 +70,7 @@ func (h *Handler) markNotificationAsRead(c *gin.Context) {
 }
 
 func (h *Handler) markAllNotificationsAsRead(c *gin.Context) {
-	userID := middleware.GetUserIDFromContext(c)
+	userID := common.GetUserIDFromContext(c)
 	if userID == uuid.Nil {
 		common.RespondWithError(c, common.ErrUnauthorized.WithDetails("User ID not found in token."))
 		return

@@ -4,9 +4,7 @@ package auth
 import (
 	"errors" // Kept for common.IsAPIError if used, or can be removed if not
 	"seattle_info_backend/internal/common"
-	"seattle_info_backend/internal/middleware" // For GetUserIDFromContext
 	"seattle_info_backend/internal/shared"
-	"seattle_info_backend/internal/user" // For user.ToUserResponse
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid" // For uuid.Nil
@@ -41,7 +39,7 @@ func (h *Handler) RegisterRoutes(router *gin.RouterGroup) {
 
 // me handler retrieves the authenticated user's profile.
 func (h *Handler) me(c *gin.Context) {
-	userID := middleware.GetUserIDFromContext(c)
+	userID := common.GetUserIDFromContext(c)
 	if userID == uuid.Nil {
 		h.logger.Warn("/me: UserID not found in context or is Nil")
 		common.RespondWithError(c, common.ErrUnauthorized.WithDetails("User ID not found in context."))
@@ -60,6 +58,6 @@ func (h *Handler) me(c *gin.Context) {
 		return
 	}
 
-	userResponse := user.ToUserResponse(sharedUser)
+	userResponse := shared.ToUserResponse(sharedUser)
 	common.RespondOK(c, "User profile retrieved successfully.", userResponse)
 }

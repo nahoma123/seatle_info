@@ -10,7 +10,8 @@ import (
 
 	"seattle_info_backend/internal/category" // For Category and SubCategory response in Listing
 	"seattle_info_backend/internal/common"
-	"seattle_info_backend/internal/user" // For User response in Listing
+	"seattle_info_backend/internal/shared"
+	"seattle_info_backend/internal/user" // For user.User
 
 	"github.com/google/uuid"
 	"github.com/lib/pq" // For pq.StringArray
@@ -246,7 +247,7 @@ type ListingImageResponse struct {
 type ListingResponse struct {
 	ID                 uuid.UUID                     `json:"id"`
 	UserID             uuid.UUID                     `json:"user_id"`
-	User               user.UserResponse             `json:"user"`
+	User               shared.UserResponse           `json:"user"`
 	CategoryID         uuid.UUID                     `json:"category_id"`
 	Category           category.CategoryResponse     `json:"category"`
 	SubCategory        *category.SubCategoryResponse `json:"sub_category,omitempty"`
@@ -276,8 +277,21 @@ type ListingResponse struct {
 }
 
 func ToListingResponse(listing *Listing, isAuthenticated bool, imageBaseURL string) ListingResponse {
-	sharedUser := user.DBToShared(listing.User) // Convert GORM user.User to shared.User
-	userResp := user.ToUserResponse(sharedUser) // Pass shared.User to ToUserResponse
+	// Manually create a shared.User from the listing.User
+	sharedUser := &shared.User{
+		ID:                listing.User.ID,
+		Email:             listing.User.Email,
+		FirstName:         listing.User.FirstName,
+		LastName:          listing.User.LastName,
+		ProfilePictureURL: listing.User.ProfilePictureURL,
+		AuthProvider:      listing.User.AuthProvider,
+		IsEmailVerified:   listing.User.IsEmailVerified,
+		Role:              listing.User.Role,
+		CreatedAt:         listing.User.CreatedAt,
+		UpdatedAt:         listing.User.UpdatedAt,
+		LastLoginAt:       listing.User.LastLoginAt,
+	}
+	userResp := shared.ToUserResponse(sharedUser) // Pass shared.User to ToUserResponse
 	catResp := category.ToCategoryResponse(&listing.Category)
 	var subCatResp *category.SubCategoryResponse
 	if listing.SubCategory != nil {

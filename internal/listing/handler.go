@@ -10,7 +10,6 @@ import (
 	// "seattle_info_backend/internal/auth" // REMOVED
 	"seattle_info_backend/internal/common"
 	"seattle_info_backend/internal/config" // Added for ImagePublicBaseURL
-	"seattle_info_backend/internal/middleware"
 
 	"fmt"
 	"strconv"
@@ -88,7 +87,7 @@ func (h *Handler) RegisterRoutes(router *gin.RouterGroup, authMW gin.HandlerFunc
 }
 
 func (h *Handler) createListing(c *gin.Context) {
-	userID := middleware.GetUserIDFromContext(c)
+	userID := common.GetUserIDFromContext(c)
 	if userID == uuid.Nil {
 		common.RespondWithError(c, common.ErrInternalServer.WithDetails("User ID not found."))
 		return
@@ -171,7 +170,7 @@ func (h *Handler) getListingByID(c *gin.Context) {
 
 	var authenticatedUserID *uuid.UUID
 	// Check if X-User-ID header is set by AuthMiddleware (if it runs for this route implicitly or explicitly)
-	userIDFromCtx := middleware.GetUserIDFromContext(c)
+	userIDFromCtx := common.GetUserIDFromContext(c)
 	if userIDFromCtx != uuid.Nil {
 		authenticatedUserID = &userIDFromCtx
 	}
@@ -195,7 +194,7 @@ func (h *Handler) searchListings(c *gin.Context) {
 	query.Page, query.PageSize = common.GetPaginationParams(c)
 
 	var authenticatedUserID *uuid.UUID
-	userIDFromCtx := middleware.GetUserIDFromContext(c)
+	userIDFromCtx := common.GetUserIDFromContext(c)
 	if userIDFromCtx != uuid.Nil {
 		authenticatedUserID = &userIDFromCtx
 	}
@@ -221,7 +220,7 @@ func (h *Handler) searchListings(c *gin.Context) {
 }
 
 func (h *Handler) getMyListings(c *gin.Context) {
-	userID := middleware.GetUserIDFromContext(c)
+	userID := common.GetUserIDFromContext(c)
 	if userID == uuid.Nil {
 		// This should ideally not happen if auth middleware is effective
 		common.RespondWithError(c, common.ErrUnauthorized.WithDetails("User not authenticated."))
@@ -261,7 +260,7 @@ func (h *Handler) updateListing(c *gin.Context) {
 		common.RespondWithError(c, common.ErrBadRequest.WithDetails("Invalid listing ID format."))
 		return
 	}
-	userID := middleware.GetUserIDFromContext(c)
+	userID := common.GetUserIDFromContext(c)
 	if userID == uuid.Nil {
 		common.RespondWithError(c, common.ErrInternalServer.WithDetails("User ID not found."))
 		return
@@ -328,7 +327,7 @@ func (h *Handler) deleteListing(c *gin.Context) {
 		common.RespondWithError(c, common.ErrBadRequest.WithDetails("Invalid listing ID format."))
 		return
 	}
-	userID := middleware.GetUserIDFromContext(c)
+	userID := common.GetUserIDFromContext(c)
 	if userID == uuid.Nil {
 		common.RespondWithError(c, common.ErrInternalServer.WithDetails("User ID not found."))
 		return

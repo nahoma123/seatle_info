@@ -214,6 +214,19 @@ func (s *ServiceImplementation) GetUserByFirebaseUID(ctx context.Context, fireba
 	return DBToShared(dbUser), nil
 }
 
+// DeleteUser deletes a user by their ID.
+func (s *ServiceImplementation) DeleteUser(ctx context.Context, id uuid.UUID) error {
+	s.logger.Info("Attempting to delete user from repository", zap.String("userID", id.String()))
+
+	if err := s.repo.Delete(ctx, id); err != nil {
+		s.logger.Error("Failed to delete user from repository", zap.Error(err), zap.String("userID", id.String()))
+		return err // Return the original error
+	}
+
+	s.logger.Info("User deleted successfully from repository", zap.String("userID", id.String()))
+	return nil
+}
+
 // SearchUsers searches for users based on the provided query.
 func (s *ServiceImplementation) SearchUsers(ctx context.Context, query shared.UserSearchQuery) ([]*shared.User, *common.Pagination, error) {
 	s.logger.Debug("Service: SearchUsers initiated", zap.Any("query", query))
