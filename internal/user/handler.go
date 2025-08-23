@@ -4,6 +4,7 @@ package user
 import (
 	"seattle_info_backend/internal/auth"
 	"seattle_info_backend/internal/common"
+	"seattle_info_backend/internal/firebase"
 	"seattle_info_backend/internal/shared"
 	"time"
 
@@ -17,15 +18,17 @@ type Handler struct {
 	service          shared.Service // Changed to shared.Service
 	logger           *zap.Logger
 	blocklistService auth.TokenBlocklistService
+	firebaseService  *firebase.FirebaseService
 }
 
 // NewHandler creates a new user handler.
 // It does NOT take auth.TokenService.
-func NewHandler(service shared.Service, logger *zap.Logger, blocklistService auth.TokenBlocklistService) *Handler { // Changed to shared.Service
+func NewHandler(service shared.Service, logger *zap.Logger, blocklistService auth.TokenBlocklistService, firebaseService *firebase.FirebaseService) *Handler { // Changed to shared.Service
 	return &Handler{
 		service:          service,
 		logger:           logger,
 		blocklistService: blocklistService,
+		firebaseService:  firebaseService,
 	}
 }
 
@@ -106,6 +109,13 @@ func (h *Handler) deleteMe(c *gin.Context) {
 		return
 	}
 
+	firebaseUID := common.GetFirebaseUIDFromContext(c)
+	if firebaseUID == "" {
+		h.logger.Error("Firebase UID not found in context for deleteMe", zap.String("path", c.Request.URL.Path))
+		common.RespondWithError(c, common.ErrInternalServer.WithDetails("Firebase identifier missing."))
+		return
+	}
+
 	// Blocklist the token first.
 	tokenString := common.GetTokenFromContext(c)
 	if tokenString == "" {
@@ -120,6 +130,13 @@ func (h *Handler) deleteMe(c *gin.Context) {
 		h.logger.Error("Failed to add token to blocklist during user deletion", zap.Error(err), zap.String("userID", userID.String()))
 		common.RespondWithError(c, common.ErrInternalServer.WithDetails("Failed to invalidate current session."))
 		return
+	}
+
+	// Revoke the user's refresh tokens in Firebase.
+	if err := h.firebaseService.RevokeRefreshTokens(c.Request.Context(), firebaseUID); err != nil {
+		h.logger.Error("Failed to revoke refresh tokens for user", zap.Error(err), zap.String("firebaseUID", firebaseUID))
+		// We can choose to continue with user deletion even if this fails,
+		// as the primary token is blocklisted. The user will be logged out.
 	}
 
 	// Now, delete the user from the database.

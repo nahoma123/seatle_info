@@ -22,6 +22,7 @@ import (
 	"seattle_info_backend/internal/platform/database"
 	"seattle_info_backend/internal/platform/logger"
 	"seattle_info_backend/internal/user"
+	"time"
 )
 
 // Injectors from wire.go:
@@ -38,7 +39,13 @@ func initializeServer(cfg *config.Config) (*app.Server, func(), error) {
 	}
 	repository := user.NewGORMRepository(db)
 	serviceImplementation := user.NewService(repository, cfg, zapLogger)
-	handler := user.NewHandler(serviceImplementation, zapLogger)
+	inMemoryBlocklistConfig := provideInMemoryBlocklistConfig()
+	inMemoryBlocklistService := auth.NewInMemoryBlocklistService(inMemoryBlocklistConfig)
+	firebaseService, err := firebase.NewFirebaseService(cfg, zapLogger)
+	if err != nil {
+		return nil, nil, err
+	}
+	handler := user.NewHandler(serviceImplementation, zapLogger, inMemoryBlocklistService, firebaseService)
 	authHandler := auth.NewHandler(serviceImplementation, zapLogger)
 	categoryRepository := category.NewGORMRepository(db)
 	service := category.NewService(categoryRepository, zapLogger, cfg)
@@ -55,11 +62,7 @@ func initializeServer(cfg *config.Config) (*app.Server, func(), error) {
 	listingHandler := listing.NewHandler(listingService, zapLogger, cfg)
 	notificationHandler := notification.NewHandler(notificationService, zapLogger)
 	listingExpiryJob := jobs.NewListingExpiryJob(listingService, zapLogger, cfg)
-	firebaseService, err := firebase.NewFirebaseService(cfg, zapLogger)
-	if err != nil {
-		return nil, nil, err
-	}
-	server, err := app.NewServer(cfg, zapLogger, handler, authHandler, categoryHandler, listingHandler, notificationHandler, listingExpiryJob, db, firebaseService, serviceImplementation)
+	server, err := app.NewServer(cfg, zapLogger, handler, authHandler, categoryHandler, listingHandler, notificationHandler, listingExpiryJob, db, firebaseService, serviceImplementation, inMemoryBlocklistService)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -71,6 +74,13 @@ func initializeServer(cfg *config.Config) (*app.Server, func(), error) {
 
 func provideImageStoragePath(cfg *config.Config) string {
 	return cfg.ImageStoragePath
+}
+
+func provideInMemoryBlocklistConfig() auth.InMemoryBlocklistConfig {
+	return auth.InMemoryBlocklistConfig{
+		DefaultExpiration: 24 * time.Hour,
+		CleanupInterval:   1 * time.Hour,
+	}
 }
 
 func provideCleanup(logger2 *zap.Logger, db *gorm.DB) func() {

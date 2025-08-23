@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Firebase Authentication</title>
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-auth.js"></script>
+</head>
+<body>
+
+<h1>Firebase Authentication</h1>
+
+<h2>Sign Up</h2>
+<input type="email" id="signup-email" placeholder="Email">
+<input type="password" id="signup-password" placeholder="Password">
+<button onclick="signUp()">Sign Up</button>
+
+<h2>Sign In</h2>
+<input type="email" id="signin-email" placeholder="Email">
+<input type="password" id="signin-password" placeholder="Password">
+<button onclick="signIn()">Sign In</button>
+
+<h2>ID Token</h2>
+<textarea id="id-token" rows="10" cols="50" readonly></textarea>
+
+<script>
+    // WARNING: Replace with your actual Firebase project configuration
+    const firebaseConfig = {
+        apiKey: "AIzaSyCnxFPjx7KPH_6csXtTnzzTsCvp8joBaAQ",
+        authDomain: "seattle-info.firebaseapp.com",
+        projectId: "seattle-info",
+    };
+
+    // Initialize Firebase
+    firebase.initializeApp(firebaseConfig);
+    const auth = firebase.auth();
+
+    function signUp() {
+        const email = document.getElementById('signup-email').value;
+        const password = document.getElementById('signup-password').value;
+        auth.createUserWithEmailAndPassword(email, password)
+            .then((userCredential) => {
+                alert('User signed up successfully!');
+                getIdToken();
+            })
+            .catch((error) => {
+                alert('Error signing up: ' + error.message);
+            });
+    }
+
+    function signIn() {
+        const email = document.getElementById('signin-email').value;
+        const password = document.getElementById('signin-password').value;
+        auth.signInWithEmailAndPassword(email, password)
+            .then((userCredential) => {
+                alert('User signed in successfully!');
+                getIdToken();
+            })
+            .catch((error) => {
+                alert('Error signing in: ' + error.message);
+            });
+    }
+
+    function getIdToken() {
+        const user = auth.currentUser;
+        if (user) {
+            user.getIdToken().then((token) => {
+                document.getElementById('id-token').value = token;
+            });
+        } else {
+            alert('No user is signed in.');
+        }
+    }
+</script>
+
+</body>
+</html>

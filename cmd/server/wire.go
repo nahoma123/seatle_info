@@ -19,6 +19,7 @@ import (
 	"seattle_info_backend/internal/platform/logger"
 	"seattle_info_backend/internal/shared"
 	"seattle_info_backend/internal/user"
+	"time"
 
 	"github.com/google/wire"
 	"go.uber.org/zap"
@@ -44,10 +45,15 @@ func initializeServer(cfg *config.Config) (*app.Server, func(), error) {
 		user.NewService,        // Returns *user.ServiceImplementation
 		wire.Bind(new(shared.Service), new(*user.ServiceImplementation)), // Binds *user.ServiceImplementation to shared.Service interface
 
+		// Auth Blocklist Service
+		provideInMemoryBlocklistConfig,
+		auth.NewInMemoryBlocklistService,
+		wire.Bind(new(auth.TokenBlocklistService), new(*auth.InMemoryBlocklistService)),
+
 		// Auth Handler (depends on shared.Service and firebase.Service)
 		auth.NewHandler,
 
-		// User Handler (depends on shared.Service)
+		// User Handler (depends on shared.Service and firebase.Service)
 		user.NewHandler,
 
 		// Category Module
@@ -88,6 +94,13 @@ func initializeServer(cfg *config.Config) (*app.Server, func(), error) {
 
 func provideImageStoragePath(cfg *config.Config) string {
 	return cfg.ImageStoragePath
+}
+
+func provideInMemoryBlocklistConfig() auth.InMemoryBlocklistConfig {
+	return auth.InMemoryBlocklistConfig{
+		DefaultExpiration: 24 * time.Hour,
+		CleanupInterval:   1 * time.Hour,
+	}
 }
 
 func provideCleanup(logger *zap.Logger, db *gorm.DB) func() {

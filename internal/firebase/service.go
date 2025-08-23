@@ -79,3 +79,13 @@ func (s *FirebaseService) VerifyIDToken(ctx context.Context, idToken string) (*a
 	s.logger.Debug("Firebase ID token verified successfully", zap.String("uid", token.UID))
 	return token, nil
 }
+
+// RevokeRefreshTokens revokes all refresh tokens for a given user.
+func (s *FirebaseService) RevokeRefreshTokens(ctx context.Context, uid string) error {
+	if err := s.authClient.RevokeRefreshTokens(ctx, uid); err != nil {
+		s.logger.Error("Failed to revoke refresh tokens", zap.Error(err), zap.String("uid", uid))
+		return fmt.Errorf("failed to revoke refresh tokens: %w", err)
+	}
+	s.logger.Info("Successfully revoked refresh tokens for user", zap.String("uid", uid))
+	return nil
+}
